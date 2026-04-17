@@ -1,0 +1,91 @@
+export type SignalTier = 'FIRE' | 'HOT' | 'WARM' | 'COLD';
+export type RiskLevel = 'LOW' | 'MED' | 'HIGH' | 'DEGEN';
+export type Platform = 'X' | 'TG' | 'Reddit' | 'Discord';
+export type Chain = 'bsc' | 'ethereum' | 'base' | 'solana' | 'arbitrum';
+
+export const CHAIN_META: Record<Chain, { label: string; symbol: string; color: string; icon: string }> = {
+  bsc:      { label: 'BNB Chain', symbol: 'BNB',  color: '#f0b90b', icon: '🟡' },
+  ethereum: { label: 'Ethereum',  symbol: 'ETH',  color: '#627eea', icon: '🔷' },
+  base:     { label: 'Base',      symbol: 'ETH',  color: '#0052ff', icon: '🔵' },
+  solana:   { label: 'Solana',    symbol: 'SOL',  color: '#9945ff', icon: '🟣' },
+  arbitrum: { label: 'Arbitrum',  symbol: 'ETH',  color: '#28a0f0', icon: '🔹' },
+};
+
+export interface Token {
+  id: string;
+  name: string;
+  ticker: string;
+  emoji: string;
+  color: string;
+  chain: Chain;
+  address: string;
+  pairAddress: string;
+
+  signal: number;
+  signalDelta: number;
+  tier: SignalTier;
+  risk: RiskLevel;
+
+  socialVelocity: number;
+  velocityDelta: number;
+  priceUsd: string;
+  priceChange1h: number;
+  priceChange24h: number;
+  volume24h: number;
+  liquidity: number;
+  marketCap: string;
+  fdv: number;
+
+  buys24h: number;
+  sells24h: number;
+  buys1h: number;
+  sells1h: number;
+
+  bondingCurveProgress: number;
+  listedOnDex: boolean;
+  dexName: string;
+
+  narratives: string[];
+  platforms: Platform[];
+  blipX: number;
+  blipY: number;
+  age: string;
+  createdAt: number;
+  sparkline: number[];
+
+  fourMemeUrl: string;
+  dexScreenerUrl: string;
+  imageUrl?: string;
+  twitterUrl?: string;
+  telegramUrl?: string;
+  websiteUrl?: string;
+}
+
+export interface FeedEvent {
+  id: string;
+  type: 'SIGNAL_UP' | 'SIGNAL_DOWN' | 'NEW_TOKEN' | 'NARRATIVE' | 'ALERT';
+  ticker: string;
+  emoji: string;
+  message: string;
+  platform: Platform;
+  timestamp: Date;
+  value?: number;
+  color: string;
+  chain: Chain;
+}
+
+export interface Narrative {
+  id: string;
+  label: string;
+  score: number;
+  tokens: string[];
+  growth: number;
+  color: string;
+}
+
+export interface Stats {
+  tokensScanned: number;
+  activeSignals: number;
+  narrativesTracked: number;
+  alertsToday: number;
+}
