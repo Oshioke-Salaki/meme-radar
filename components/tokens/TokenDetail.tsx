@@ -22,17 +22,68 @@ const RISK_DESC: Record<string, string> = {
   DEGEN: 'Extremely new. Very high risk.',
 };
 
+interface AIAnalysis {
+  verdict: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  confidence: number;
+  thesis: string;
+  catalyst: string;
+  risk: string;
+  suggestion: 'BUY' | 'WATCH' | 'AVOID';
+  suggestedSizeUsd: number;
+}
+
+const VERDICT_COLOR = { BULLISH: 'var(--green)', BEARISH: 'var(--pink)', NEUTRAL: 'var(--yellow)' };
+const SUGGESTION_COLOR = { BUY: 'var(--green)', WATCH: 'var(--yellow)', AVOID: 'var(--pink)' };
+const SUGGESTION_BG = { BUY: 'rgba(0,230,118,0.1)', WATCH: 'rgba(255,202,40,0.1)', AVOID: 'rgba(255,64,129,0.1)' };
+
 export default function TokenDetail({ token, onClose, onAlert }: Props) {
   const sparkData = token.sparkline.map((v, i) => ({ t: i, v }));
   const priceUp = token.priceChange24h >= 0;
   const signalUp = token.signalDelta >= 0;
   const [copied, setCopied] = useState(false);
 
+  // AI analysis state
+  const [aiState, setAiState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [aiRaw, setAiRaw] = useState('');
+  const [aiResult, setAiResult] = useState<AIAnalysis | null>(null);
+
   const copyAddress = () => {
     navigator.clipboard.writeText(token.address).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const runAnalysis = async () => {
+    setAiState('loading');
+    setAiRaw('');
+    setAiResult(null);
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(token),
+      });
+      if (!res.ok) throw new Error('API error');
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      // We prefilled '{' in the assistant turn, so prepend it
+      let full = '{';
+      setAiRaw(full);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value, { stream: true });
+        setAiRaw(full);
+      }
+      const jsonMatch = full.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        setAiResult(JSON.parse(jsonMatch[0]));
+      }
+      setAiState('done');
+    } catch {
+      setAiState('error');
+    }
   };
 
   return (
@@ -138,6 +189,93 @@ export default function TokenDetail({ token, onClose, onAlert }: Props) {
                 {n}
               </span>
             ))}
+          </div>
+        </div>
+
+        {/* AI Analysis */}
+        <div className="mb-4">
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(179,136,255,0.25)', background: 'rgba(179,136,255,0.04)' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: aiState !== 'idle' ? '1px solid rgba(179,136,255,0.15)' : 'none' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🤖</span>
+                <span className="text-xs font-bold" style={{ color: 'var(--purple)' }}>AI Trade Analysis</span>
+                {aiState === 'loading' && (
+                  <span className="text-xs animate-live" style={{ color: 'var(--purple)' }}>Thinking…</span>
+                )}
+              </div>
+              {aiState === 'idle' || aiState === 'error' ? (
+                <button onClick={runAnalysis}
+                  className="text-xs font-bold px-3 py-1 rounded-lg"
+                  style={{ background: 'rgba(179,136,255,0.15)', color: 'var(--purple)', border: '1px solid rgba(179,136,255,0.3)', cursor: 'pointer' }}>
+                  {aiState === 'error' ? 'Retry' : 'Analyse ✦'}
+                </button>
+              ) : aiState === 'done' ? (
+                <button onClick={() => { setAiState('idle'); setAiResult(null); setAiRaw(''); }}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                  ✕
+                </button>
+              ) : null}
+            </div>
+
+            {/* Loading — show streaming raw text */}
+            {aiState === 'loading' && (
+              <div className="px-3 py-2">
+                <div className="font-mono text-xs leading-relaxed" style={{ color: 'var(--purple)', opacity: 0.7, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {aiRaw || '…'}
+                  <span className="animate-live">▌</span>
+                </div>
+              </div>
+            )}
+
+            {/* Done — show structured result */}
+            {aiState === 'done' && aiResult && (
+              <div className="p-3 flex flex-col gap-3">
+                {/* Verdict + suggestion row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-sm" style={{ color: VERDICT_COLOR[aiResult.verdict] }}>
+                      {aiResult.verdict === 'BULLISH' ? '▲' : aiResult.verdict === 'BEARISH' ? '▼' : '—'} {aiResult.verdict}
+                    </span>
+                    <span className="text-xs px-1.5 py-px rounded font-mono"
+                      style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+                      {aiResult.confidence}% confidence
+                    </span>
+                  </div>
+                  <span className="font-bold text-xs px-2.5 py-1 rounded-lg"
+                    style={{ background: SUGGESTION_BG[aiResult.suggestion], color: SUGGESTION_COLOR[aiResult.suggestion], border: `1px solid ${SUGGESTION_COLOR[aiResult.suggestion]}30` }}>
+                    {aiResult.suggestion}
+                    {aiResult.suggestion !== 'AVOID' && aiResult.suggestedSizeUsd > 0 && ` · $${aiResult.suggestedSizeUsd}`}
+                  </span>
+                </div>
+
+                {/* Thesis */}
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  {aiResult.thesis}
+                </p>
+
+                {/* Catalyst + Risk */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg p-2" style={{ background: 'rgba(0,230,118,0.06)', border: '1px solid rgba(0,230,118,0.15)' }}>
+                    <div className="text-xs font-semibold mb-1" style={{ color: 'var(--green)' }}>⚡ Catalyst</div>
+                    <div className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{aiResult.catalyst}</div>
+                  </div>
+                  <div className="rounded-lg p-2" style={{ background: 'rgba(255,64,129,0.06)', border: '1px solid rgba(255,64,129,0.15)' }}>
+                    <div className="text-xs font-semibold mb-1" style={{ color: 'var(--pink)' }}>⚠ Risk</div>
+                    <div className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{aiResult.risk}</div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-center" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+                  AI analysis · Not financial advice
+                </p>
+              </div>
+            )}
+
+            {aiState === 'error' && (
+              <div className="px-3 py-2 text-xs" style={{ color: 'var(--pink)' }}>Failed to load analysis. Check your API key.</div>
+            )}
           </div>
         </div>
 
