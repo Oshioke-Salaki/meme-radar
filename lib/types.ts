@@ -59,6 +59,20 @@ export interface Token {
   twitterUrl?: string;
   telegramUrl?: string;
   websiteUrl?: string;
+  creatorAddress?: string;   // Four.meme creator wallet
+  bondingCurveBnb?: number;  // BNB raised toward 24 BNB graduation
+  fourMemeStatus?: string;   // INIT | PRESALE | TRADE from Four.meme
+  fourMemeTag?: string;      // Meme, AI, etc.
+  aiScored?: boolean;        // true when signal was scored by Claude
+  timeToGradMinutes?: number; // estimated minutes until bonding curve graduation
+  rugRisk?: RugRisk;         // AI rug pull risk assessment
+  smartMoneyActive?: boolean; // smart money wallet detected buying this token
+}
+
+export interface RugRisk {
+  score: number;      // 0-100 (0 = safe, 100 = certain rug)
+  level: 'SAFE' | 'CAUTION' | 'DANGER';
+  summary: string;
 }
 
 export interface FeedEvent {
@@ -81,6 +95,9 @@ export interface Narrative {
   tokens: string[];
   growth: number;
   color: string;
+  insight?: string;      // AI-generated trader insight
+  momentum?: 'LOW' | 'MED' | 'HIGH';
+  aiGenerated?: boolean;
 }
 
 export interface Stats {

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Bell, X, BellRing, Radio, Zap, Flame } from 'lucide-react';
 import { Token } from '@/lib/types';
+import TokenAvatar from '@/components/ui/TokenAvatar';
 
-interface SavedAlert { id: string; ticker: string; emoji: string; threshold: number; color: string; }
+interface SavedAlert { id: string; ticker: string; threshold: number; color: string; }
 
 interface Props {
   token: Token;
@@ -24,7 +26,7 @@ export default function AlertModal({ token, onClose, onSaved }: Props) {
   const save = () => {
     const alerts: SavedAlert[] = JSON.parse(localStorage.getItem('memeradar_alerts') || '[]');
     const filtered = alerts.filter(a => a.ticker !== token.ticker);
-    const newAlert: SavedAlert = { id: Date.now().toString(), ticker: token.ticker, emoji: token.emoji, threshold, color: token.color };
+    const newAlert: SavedAlert = { id: Date.now().toString(), ticker: token.ticker, threshold, color: token.color };
     localStorage.setItem('memeradar_alerts', JSON.stringify([...filtered, newAlert]));
     setSaved(true);
     onSaved?.();
@@ -37,11 +39,13 @@ export default function AlertModal({ token, onClose, onSaved }: Props) {
     onClose();
   };
 
-  const hint = threshold >= 80
-    ? '🔥 High-priority — you will be notified when this token hits viral territory.'
+  const HintIcon = threshold >= 80 ? Flame : threshold >= 60 ? Zap : Radio;
+  const hintColor = threshold >= 80 ? 'var(--green)' : threshold >= 60 ? 'var(--yellow)' : 'var(--blue)';
+  const hintText = threshold >= 80
+    ? 'High-priority — you will be notified when this token hits viral territory.'
     : threshold >= 60
-    ? '⚡ Good threshold. You will be notified while there is still time to act.'
-    : '📡 Early alert. You will get notified as soon as momentum builds.';
+    ? 'Good threshold. You will be notified while there is still time to act.'
+    : 'Early alert. You will get notified as soon as momentum builds.';
 
   return (
     <div className="modal-backdrop animate-fade-in" onClick={onClose}>
@@ -52,37 +56,41 @@ export default function AlertModal({ token, onClose, onSaved }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-                style={{ background: `${token.color}18`, border: `1px solid ${token.color}30` }}>
-                {token.emoji}
-              </div>
+              <TokenAvatar color={token.color} imageUrl={token.imageUrl} name={token.name} ticker={token.ticker} size={44} />
               <div>
                 <div className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Signal Alert</div>
                 <div className="font-mono text-sm" style={{ color: token.color }}>${token.ticker} — {token.name}</div>
               </div>
             </div>
-            <button className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={onClose}>✕</button>
+            <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={onClose}>
+              <X size={14} />
+            </button>
           </div>
 
           {saved ? (
             <div className="text-center py-8">
-              <div className="text-4xl mb-3">🔔</div>
+              <div className="flex justify-center mb-3">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'var(--green-soft)', border: '1px solid rgba(0,230,118,0.25)' }}>
+                  <BellRing size={28} color="var(--green)" />
+                </div>
+              </div>
               <div className="font-bold text-lg mb-1" style={{ color: 'var(--green)' }}>Alert saved!</div>
               <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                We will flag <strong style={{ color: token.color }}>${token.ticker}</strong> when its signal score reaches <strong style={{ color: 'var(--text-primary)' }}>{threshold}</strong>.
+                We will flag <strong style={{ color: token.color }}>${token.ticker}</strong> when its signal reaches <strong style={{ color: 'var(--text-primary)' }}>{threshold}</strong>.
               </div>
             </div>
           ) : (
             <>
-              {/* Current score */}
+              {/* Current vs threshold */}
               <div className="flex items-center justify-between mb-4 p-3 rounded-xl"
                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
                 <div>
-                  <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>Current signal score</div>
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>Current signal</div>
                   <div className="font-bold font-mono text-2xl" style={{ color: token.color }}>{token.signal}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>Your alert threshold</div>
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--text-secondary)' }}>Alert threshold</div>
                   <div className="font-bold font-mono text-2xl" style={{ color: 'var(--text-primary)' }}>{threshold}</div>
                 </div>
               </div>
@@ -90,20 +98,12 @@ export default function AlertModal({ token, onClose, onSaved }: Props) {
               {/* Slider */}
               <div className="mb-4">
                 <label className="flex items-center justify-between mb-3">
-                  <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                    Alert me when signal reaches:
-                  </span>
+                  <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Alert me when signal reaches:</span>
                   <span className="font-mono font-bold text-lg" style={{ color: token.color }}>{threshold}</span>
                 </label>
-                <input
-                  type="range"
-                  min={Math.max(1, token.signal - 10)}
-                  max={99}
-                  value={threshold}
+                <input type="range" min={Math.max(1, token.signal - 10)} max={99} value={threshold}
                   onChange={e => setThreshold(Number(e.target.value))}
-                  className="w-full"
-                  style={{ accentColor: token.color, cursor: 'pointer' }}
-                />
+                  className="w-full" style={{ accentColor: token.color, cursor: 'pointer' }} />
                 <div className="flex justify-between mt-1">
                   <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Now: {token.signal}</span>
                   <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>Max: 99</span>
@@ -111,14 +111,16 @@ export default function AlertModal({ token, onClose, onSaved }: Props) {
               </div>
 
               {/* Hint */}
-              <div className="p-3 rounded-xl mb-5 text-sm" style={{ background: `${token.color}0a`, border: `1px solid ${token.color}20`, color: 'var(--text-secondary)' }}>
-                {hint}
+              <div className="p-3 rounded-xl mb-5 flex items-start gap-2.5"
+                style={{ background: `${token.color}0a`, border: `1px solid ${token.color}20` }}>
+                <HintIcon size={14} color={hintColor} className="flex-shrink-0 mt-0.5" />
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{hintText}</span>
               </div>
 
               {/* Buttons */}
               <div className="flex gap-2">
-                <button className="btn btn-primary flex-1" onClick={save}>
-                  🔔 {hasExisting ? 'Update Alert' : 'Set Alert'}
+                <button className="btn btn-primary flex-1 flex items-center justify-center gap-2" onClick={save}>
+                  <Bell size={14} /> {hasExisting ? 'Update Alert' : 'Set Alert'}
                 </button>
                 {hasExisting && (
                   <button className="btn btn-danger" onClick={remove}>Remove</button>

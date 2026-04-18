@@ -8,6 +8,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   chain: Chain;
+  tierFilter?: string;
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -41,7 +42,7 @@ function findClosestToken(tokens: Token[], mx: number, my: number, canvasSize: n
   return closest;
 }
 
-export default function RadarDisplay({ tokens, selectedId, onSelect, chain }: Props) {
+export default function RadarDisplay({ tokens, selectedId, onSelect, chain, tierFilter = 'ALL' }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const angleRef  = useRef(0);
   const rafRef    = useRef<number>(0);
@@ -116,16 +117,19 @@ export default function RadarDisplay({ tokens, selectedId, onSelect, chain }: Pr
         const color = TIER_COLORS[token.tier];
         const isSelected = token.id === selectedId;
         const isHov = token.id === hovered;
+        const isFiltered = tierFilter !== 'ALL' && token.tier !== tierFilter;
         const dotSize = isSelected ? 7 : isHov ? 6 : 4.5;
 
-        if (isSelected || isHov) {
+        ctx.globalAlpha = isFiltered ? 0.12 : 1;
+
+        if ((isSelected || isHov) && !isFiltered) {
           ctx.beginPath();
           ctx.arc(bx, by, dotSize + 8, 0, Math.PI * 2);
           ctx.strokeStyle = color + '35';
           ctx.lineWidth = 1;
           ctx.stroke();
         }
-        if (token.tier === 'FIRE') {
+        if (token.tier === 'FIRE' && !isFiltered) {
           ctx.beginPath();
           ctx.arc(bx, by, dotSize + 5, 0, Math.PI * 2);
           ctx.strokeStyle = color + '50';
@@ -136,12 +140,13 @@ export default function RadarDisplay({ tokens, selectedId, onSelect, chain }: Pr
         ctx.beginPath();
         ctx.arc(bx, by, dotSize, 0, Math.PI * 2);
         ctx.fillStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = isSelected ? 18 : isHov ? 12 : 7;
+        ctx.shadowColor = isFiltered ? 'transparent' : color;
+        ctx.shadowBlur = isFiltered ? 0 : isSelected ? 18 : isHov ? 12 : 7;
         ctx.fill();
         ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
 
-        if (isSelected || isHov) {
+        if ((isSelected || isHov) && !isFiltered) {
           ctx.font = '600 10px "JetBrains Mono", monospace';
           ctx.fillStyle = color;
           ctx.shadowColor = color;
@@ -164,7 +169,7 @@ export default function RadarDisplay({ tokens, selectedId, onSelect, chain }: Pr
 
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [tokens, selectedId, hovered]);
+  }, [tokens, selectedId, hovered, tierFilter]);
 
   // ── Click handler ──
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

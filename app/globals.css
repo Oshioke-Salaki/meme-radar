@@ -238,6 +238,12 @@ body {
 }
 
 /* ── Responsive layout ── */
+@media (max-width: 1100px) {
+  .all-tokens-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
 @media (max-width: 900px) {
   .hero-row {
     flex-direction: column !important;
@@ -245,12 +251,14 @@ body {
   .hero-left {
     width: 100% !important;
     flex-shrink: unset !important;
+    order: 1;
   }
   .hero-right {
     display: none !important;
   }
   .hero-center {
     min-width: 0;
+    order: -1; /* featured token before radar on tablet/mobile */
   }
   .token-list-row {
     flex-direction: column !important;
@@ -270,5 +278,38 @@ body {
   }
   .featured-stats-grid {
     grid-template-columns: repeat(2, 1fr) !important;
+  }
+  /* single-column token cards on phones */
+  .token-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .all-tokens-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  /* tighten main padding on phones */
+  .main-content {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  /* hide wallet view on phone (saves vertical space) */
+  .wallet-hide-mobile {
+    display: none !important;
+  }
+  /* compact the graduating-soon chips */
+  .grad-chips {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 420px) {
+  .all-tokens-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* very small phones: hide the radar left column entirely */
+  .hero-left-mobile-compact {
+    gap: 8px !important;
+  }
+  .radar-container {
+    display: none !important;
   }
 }

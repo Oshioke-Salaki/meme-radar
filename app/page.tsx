@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { Flame, Zap, Thermometer, Snowflake, RefreshCw, CheckCircle, Circle, TrendingUp, Radio, Puzzle, Bell, Search as SearchIcon, X as XIcon, Clock, Sparkles, Target, ArrowUpRight } from 'lucide-react';
 import TopBar from '@/components/layout/TopBar';
 import RadarDisplay from '@/components/radar/RadarDisplay';
 import SignalCard from '@/components/tokens/SignalCard';
@@ -13,6 +14,8 @@ import AlertModal from '@/components/ui/AlertModal';
 import HowItWorks from '@/components/ui/HowItWorks';
 import MyAlerts from '@/components/ui/MyAlerts';
 import ToastContainer from '@/components/ui/Toast';
+import AccuracyBadge from '@/components/ui/AccuracyBadge';
+import WalletView from '@/components/portfolio/WalletView';
 import { useRealData } from '@/hooks/useRealData';
 import { useToast } from '@/hooks/useToast';
 import { Token, SignalTier, Chain, CHAIN_META } from '@/lib/types';
@@ -23,12 +26,12 @@ type SortKey = 'signal' | 'velocity' | 'price' | 'new';
 
 const CHAINS: Chain[] = ['bsc', 'ethereum', 'base', 'solana', 'arbitrum'];
 
-const TIER_BTNS: { key: TierFilter; label: string }[] = [
-  { key: 'ALL', label: 'All' },
-  { key: 'FIRE', label: '🔥 Fire' },
-  { key: 'HOT',  label: '⚡ Hot' },
-  { key: 'WARM', label: '🌡 Warm' },
-  { key: 'COLD', label: '❄️ Cold' },
+const TIER_BTNS: { key: TierFilter; Icon?: React.ElementType; label: string }[] = [
+  { key: 'ALL',  label: 'All' },
+  { key: 'FIRE', Icon: Flame,       label: 'Fire' },
+  { key: 'HOT',  Icon: Zap,         label: 'Hot' },
+  { key: 'WARM', Icon: Thermometer, label: 'Warm' },
+  { key: 'COLD', Icon: Snowflake,   label: 'Cold' },
 ];
 
 function sortTokens(tokens: Token[], key: SortKey) {
@@ -64,7 +67,7 @@ function LoadingSkeleton() {
 
 export default function Home() {
   const [chain, setChain]           = useState<Chain>('bsc');
-  const { tokens, feed, narratives, stats, loading, error, refresh } = useRealData(chain);
+  const { tokens, feed, narratives, stats, loading, error, aiScoring, smartWallets, refresh } = useRealData(chain);
   const { toasts, push, remove }    = useToast();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -107,7 +110,7 @@ export default function Home() {
         const key = `notified_${a.ticker}_${a.threshold}`;
         if (!sessionStorage.getItem(key)) {
           sessionStorage.setItem(key, '1');
-          push({ type: 'success', title: `${t.emoji} $${t.ticker} hit ${a.threshold}!`, body: 'Signal crossed your threshold.' });
+          push({ type: 'success', title: `$${t.ticker} hit ${a.threshold}!`, body: 'Signal crossed your threshold.' });
         }
       }
     });
@@ -116,6 +119,16 @@ export default function Home() {
   const sorted      = useMemo(() => sortTokens(tokens, sortKey), [tokens, sortKey]);
   const topToken    = useMemo(() => sortTokens(tokens, 'signal')[0] || null, [tokens]);
   const selectedToken = tokens.find(t => t.id === selectedId) ?? null;
+
+  // Hot Entries: early entry (<25% bonding, velocity up) and pre-graduation (>80%, ETA <2h)
+  const earlyEntries = useMemo(() =>
+    tokens.filter(t => !t.listedOnDex && t.bondingCurveProgress < 25 && t.velocityDelta > 0 && t.buys1h >= 3)
+      .sort((a, b) => b.velocityDelta - a.velocityDelta).slice(0, 4),
+    [tokens]);
+  const preGradEntries = useMemo(() =>
+    tokens.filter(t => !t.listedOnDex && t.bondingCurveProgress >= 80 && (t.timeToGradMinutes ?? 9999) < 360)
+      .sort((a, b) => (a.timeToGradMinutes ?? 9999) - (b.timeToGradMinutes ?? 9999)).slice(0, 4),
+    [tokens]);
 
   const filtered = useMemo(() => {
     let list = sorted;
@@ -145,7 +158,21 @@ export default function Home() {
     <div className="min-h-screen grid-bg">
       <TopBar stats={stats} search={search} onSearch={setSearch} onHelp={() => setShowHelp(true)} tokens={tokens} chain={chain} />
 
-      <main className="max-w-[1680px] mx-auto px-4 py-4 flex flex-col gap-5">
+      {/* ── Pitch banner ── */}
+      <div style={{ background: 'rgba(0,230,118,0.03)', borderBottom: '1px solid rgba(0,230,118,0.1)' }}>
+        <div className="max-w-[1680px] mx-auto px-4 py-2 flex items-center gap-3 flex-wrap">
+          <span className="font-bold text-xs" style={{ color: 'var(--green)' }}>Bloomberg Terminal for Four.meme.</span>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Real-time signal scanner with AI-predicted graduation timing.
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-auto shrink-0"
+            style={{ background: 'rgba(240,185,11,0.1)', color: '#f0b90b', border: '1px solid rgba(240,185,11,0.2)' }}>
+            Four.meme AI Sprint
+          </span>
+        </div>
+      </div>
+
+      <main className="max-w-[1680px] mx-auto px-4 py-4 flex flex-col gap-5 main-content">
 
         {/* ── Chain selector ── */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -173,8 +200,14 @@ export default function Home() {
               {error}
             </span>
           )}
-          <button className="btn btn-ghost text-xs py-1.5 px-3" onClick={refresh} disabled={loading}>
-            {loading ? '⟳ Loading…' : '⟳ Refresh'}
+          {aiScoring && (
+            <span className="text-xs flex items-center gap-1.5" style={{ color: 'var(--purple)' }}>
+              <Sparkles size={11} className="animate-pulse" /> Claude scoring…
+            </span>
+          )}
+          <button className="btn btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5" onClick={refresh} disabled={loading}>
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
 
@@ -183,7 +216,7 @@ export default function Home() {
           <LoadingSkeleton />
         ) : tokens.length === 0 ? (
           <div className="card py-20 text-center">
-            <div className="text-4xl mb-3">📡</div>
+            <div className="flex justify-center mb-3"><Radio size={36} style={{ color: 'var(--text-muted)' }} /></div>
             <div className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>
               No tokens found on {CHAIN_META[chain].label}
             </div>
@@ -216,20 +249,33 @@ export default function Home() {
                   </span>
                 </div>
 
-                <RadarDisplay tokens={tokens} selectedId={selectedId} onSelect={handleSelect} chain={chain} />
+                <div className="radar-container">
+                  <RadarDisplay tokens={tokens} selectedId={selectedId} onSelect={handleSelect} chain={chain} tierFilter={tierFilter} />
+                </div>
 
                 <div className="grid grid-cols-4 gap-2">
-                  {(['FIRE','HOT','WARM','COLD'] as const).map(t => {
-                    const c = { FIRE:'var(--green)', HOT:'var(--blue)', WARM:'var(--yellow)', COLD:'#8080a8' }[t];
-                    const icon = { FIRE:'🔥', HOT:'⚡', WARM:'🌡', COLD:'❄️' }[t];
+                  {([
+                    { t: 'FIRE' as const, c: 'var(--green)',  Icon: Flame },
+                    { t: 'HOT'  as const, c: 'var(--blue)',   Icon: Zap },
+                    { t: 'WARM' as const, c: 'var(--yellow)', Icon: Thermometer },
+                    { t: 'COLD' as const, c: '#8080a8',       Icon: Snowflake },
+                  ]).map(({ t, c, Icon }) => {
                     const active = tierFilter === t;
                     const count = tokens.filter(tk => tk.tier === t).length;
                     return (
-                      <button key={t} onClick={() => setTierFilter(p => p === t ? 'ALL' : t)}
-                        className="rounded-xl p-2 text-center transition-all"
+                      <button key={t} onClick={() => {
+                        const next = tierFilter === t ? 'ALL' : t;
+                        setTierFilter(next);
+                        if (window.innerWidth < 900) {
+                          setTimeout(() => {
+                            document.getElementById('all-tokens')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 100);
+                        }
+                      }}
+                        className="rounded-xl p-2 text-center transition-all flex flex-col items-center gap-0.5"
                         style={{ background: active ? `${c}14` : 'rgba(255,255,255,0.02)', border: active ? `1px solid ${c}40` : '1px solid var(--border)', cursor: 'pointer' }}>
-                        <div className="text-sm">{icon}</div>
-                        <div className="font-mono text-xs font-bold mt-0.5" style={{ color: active ? c : 'var(--text-muted)' }}>{t}</div>
+                        <Icon size={16} color={active ? c : 'var(--text-muted)'} strokeWidth={2} />
+                        <div className="font-mono text-xs font-bold" style={{ color: active ? c : 'var(--text-muted)' }}>{t}</div>
                         <div className="font-mono text-xs" style={{ color: 'var(--text-dim)' }}>{count}</div>
                       </button>
                     );
@@ -237,6 +283,9 @@ export default function Home() {
                 </div>
 
                 <MyAlerts tokens={tokens} onAlert={handleAlert} />
+                <div className="wallet-hide-mobile">
+                  <WalletView tokens={tokens} onSelectToken={(t) => { handleSelect(t.id); }} />
+                </div>
               </div>
 
               {/* Center: Featured + top 4 */}
@@ -246,9 +295,9 @@ export default function Home() {
                 )}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Next hottest</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Tap a card · 🔔 to alert</span>
+                  <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>Tap a card · <Bell size={11} /> to alert</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 token-cards-grid">
                   {sortTokens(tokens, 'signal').slice(1, 5).map(t => (
                     <SignalCard key={t.id} token={t} selected={t.id === selectedId}
                       onClick={() => handleSelect(t.id)} onAlert={() => handleAlert(t)} />
@@ -266,11 +315,114 @@ export default function Home() {
               </div>
             </div>
 
+            {/* ── Graduating Soon banner ── */}
+            {chain === 'bsc' && (() => {
+              const graduating = tokens
+                .filter(t => !t.listedOnDex && t.bondingCurveProgress >= 80 && t.timeToGradMinutes)
+                .sort((a, b) => (a.timeToGradMinutes ?? 9999) - (b.timeToGradMinutes ?? 9999))
+                .slice(0, 5);
+              if (!graduating.length) return null;
+              return (
+                <div className="rounded-xl p-3" style={{ background: 'rgba(0,230,118,0.04)', border: '1px solid rgba(0,230,118,0.2)' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock size={13} style={{ color: 'var(--green)' }} />
+                    <span className="text-xs font-bold" style={{ color: 'var(--green)' }}>Graduating Soon</span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>— these tokens are near 24 BNB and will list on PancakeSwap imminently</span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {graduating.map(t => (
+                      <button key={t.id}
+                        onClick={() => handleSelect(t.id)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all"
+                        style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.25)', cursor: 'pointer' }}>
+                        <span className="font-mono font-bold text-xs" style={{ color: 'var(--green)' }}>${t.ticker}</span>
+                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {t.bondingCurveProgress}% · ~{t.timeToGradMinutes! < 60 ? `${t.timeToGradMinutes}m` : `${Math.round(t.timeToGradMinutes! / 60)}h`}
+                        </div>
+                        <div className="w-12 rounded-full overflow-hidden" style={{ height: 4, background: 'rgba(255,255,255,0.08)' }}>
+                          <div style={{ width: `${t.bondingCurveProgress}%`, height: '100%', background: 'var(--green)', borderRadius: 4 }} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Hot Entries ── */}
+            {chain === 'bsc' && (earlyEntries.length > 0 || preGradEntries.length > 0) && (
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target size={14} style={{ color: 'var(--yellow)' }} />
+                  <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Hot Entries</span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>AI-identified entry windows right now</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 token-cards-grid">
+                  {/* Early Entry */}
+                  <div>
+                    <div className="text-xs font-bold mb-2 flex items-center gap-1" style={{ color: 'var(--blue)' }}>
+                      <TrendingUp size={11} /> Early Entry — get in before the crowd
+                    </div>
+                    {earlyEntries.length === 0
+                      ? <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No early entry signals right now</p>
+                      : earlyEntries.map(t => (
+                        <button key={t.id} onClick={() => handleSelect(t.id)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg mb-1.5 text-left transition-all"
+                          style={{ background: 'rgba(64,196,255,0.05)', border: '1px solid rgba(64,196,255,0.15)', cursor: 'pointer' }}>
+                          <div className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0"
+                            style={{ background: `${t.color}20`, color: t.color }}>{t.ticker.slice(0,2)}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-mono text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>${t.ticker}</div>
+                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{t.bondingCurveProgress}% filled</div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-bold" style={{ color: 'var(--blue)' }}>+{t.velocityDelta} buys↑</div>
+                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>sig {t.signal}</div>
+                          </div>
+                          <ArrowUpRight size={12} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+                        </button>
+                      ))
+                    }
+                  </div>
+                  {/* Pre-Graduation */}
+                  <div>
+                    <div className="text-xs font-bold mb-2 flex items-center gap-1" style={{ color: 'var(--green)' }}>
+                      <Clock size={11} /> Pre-Graduation — last chance before DEX listing
+                    </div>
+                    {preGradEntries.length === 0
+                      ? <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No imminent graduations right now</p>
+                      : preGradEntries.map(t => (
+                        <button key={t.id} onClick={() => handleSelect(t.id)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg mb-1.5 text-left transition-all"
+                          style={{ background: 'rgba(0,230,118,0.05)', border: '1px solid rgba(0,230,118,0.18)', cursor: 'pointer' }}>
+                          <div className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0"
+                            style={{ background: `${t.color}20`, color: t.color }}>{t.ticker.slice(0,2)}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-mono text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>${t.ticker}</div>
+                            <div className="w-full rounded-full mt-0.5 overflow-hidden" style={{ height: 3, background: 'rgba(255,255,255,0.08)' }}>
+                              <div style={{ width: `${t.bondingCurveProgress}%`, height: '100%', background: 'var(--green)', borderRadius: 3 }} />
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-bold" style={{ color: 'var(--green)' }}>
+                              {t.timeToGradMinutes! < 60 ? `${t.timeToGradMinutes}m` : `~${Math.round(t.timeToGradMinutes!/60)}h`}
+                            </div>
+                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{t.bondingCurveProgress}%</div>
+                          </div>
+                          <ArrowUpRight size={12} style={{ color: 'var(--green)', flexShrink: 0 }} />
+                        </button>
+                      ))
+                    }
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ── All tokens ── */}
             <div className="flex gap-4 items-start token-list-row">
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <h2 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
+                  <h2 id="all-tokens" className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
                     All Tokens
                     {(tierFilter !== 'ALL' || dexFilter !== 'ALL' || search) && (
                       <span className="ml-2 font-normal text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -280,7 +432,7 @@ export default function Home() {
                   </h2>
                   <div className="flex gap-1.5 flex-wrap">
                     {TIER_BTNS.map(btn => (
-                      <button key={btn.key} className="btn text-xs py-1 px-2.5"
+                      <button key={btn.key} className="btn text-xs py-1 px-2.5 flex items-center gap-1"
                         style={{
                           background: tierFilter === btn.key ? 'rgba(0,230,118,0.1)' : 'rgba(255,255,255,0.03)',
                           color: tierFilter === btn.key ? 'var(--green)' : 'var(--text-secondary)',
@@ -288,12 +440,17 @@ export default function Home() {
                           borderRadius: 7,
                         }}
                         onClick={() => setTierFilter(btn.key)}>
+                        {btn.Icon && <btn.Icon size={10} strokeWidth={2.5} />}
                         {btn.label}
                       </button>
                     ))}
                     <span style={{ width: 1, background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
-                    {([['ALL','All stages'],['listed','✓ On DEX'],['bonding','◎ Bonding']] as [DexFilter, string][]).map(([k, label]) => (
-                      <button key={k} className="btn text-xs py-1 px-2.5"
+                    {([
+                      { k: 'ALL' as DexFilter,     Icon: null,          label: 'All stages' },
+                      { k: 'listed' as DexFilter,  Icon: CheckCircle,   label: 'On DEX' },
+                      { k: 'bonding' as DexFilter, Icon: Circle,        label: 'Bonding' },
+                    ]).map(({ k, Icon, label }) => (
+                      <button key={k} className="btn text-xs py-1 px-2.5 flex items-center gap-1"
                         style={{
                           background: dexFilter === k ? 'rgba(240,185,11,0.1)' : 'rgba(255,255,255,0.03)',
                           color: dexFilter === k ? '#f0b90b' : 'var(--text-secondary)',
@@ -301,11 +458,13 @@ export default function Home() {
                           borderRadius: 7,
                         }}
                         onClick={() => setDexFilter(k)}>
+                        {Icon && <Icon size={10} strokeWidth={2.5} />}
                         {label}
                       </button>
                     ))}
                   </div>
                   <div className="flex-1" />
+                  <AccuracyBadge />
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Sort:</span>
                     <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
@@ -318,15 +477,15 @@ export default function Home() {
                     </select>
                   </div>
                   {(tierFilter !== 'ALL' || dexFilter !== 'ALL' || search) && (
-                    <button className="btn btn-ghost text-xs py-1 px-2.5" onClick={() => { setTierFilter('ALL'); setDexFilter('ALL'); setSearch(''); }}>
-                      ✕ Clear
+                    <button className="btn btn-ghost text-xs py-1 px-2.5 flex items-center gap-1" onClick={() => { setTierFilter('ALL'); setDexFilter('ALL'); setSearch(''); }}>
+                      <XIcon size={10} /> Clear
                     </button>
                   )}
                 </div>
 
                 {filtered.length === 0 ? (
                   <div className="card py-16 text-center">
-                    <div className="text-4xl mb-3">🔍</div>
+                    <div className="flex justify-center mb-3"><SearchIcon size={36} style={{ color: 'var(--text-muted)' }} /></div>
                     <div className="font-bold mb-1" style={{ color: 'var(--text-primary)' }}>No tokens found</div>
                     <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Try a different search or filter</div>
                     <button className="btn btn-ghost mt-4" onClick={() => { setSearch(''); setTierFilter('ALL'); }}>
@@ -335,7 +494,7 @@ export default function Home() {
                   </div>
                 ) : (
                   <>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))' }}>
+                    <div className="grid gap-3 all-tokens-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                       {paginated.map(t => (
                         <SignalCard key={t.id} token={t} selected={t.id === selectedId}
                           onClick={() => handleSelect(t.id)} onAlert={() => handleAlert(t)} />
@@ -405,13 +564,15 @@ export default function Home() {
                         border: 'none',
                         cursor: 'pointer',
                       }}>
-                      {tab === 'trades' ? '💹 Live Trades' : '📡 Signal Feed'}
+                      <span className="flex items-center justify-center gap-1.5">
+                        {tab === 'trades' ? <><TrendingUp size={12} /> Live Trades</> : <><Radio size={12} /> Signal Feed</>}
+                      </span>
                     </button>
                   ))}
                 </div>
                 <div className="flex-1 min-h-0">
                   {feedTab === 'trades'
-                    ? <LiveTrades tokens={tokens} />
+                    ? <LiveTrades tokens={tokens} smartWallets={smartWallets} />
                     : <LiveFeed events={feed} />
                   }
                 </div>
@@ -427,8 +588,8 @@ export default function Home() {
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Not financial advice</span>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
-            <a href="/api/skill" target="_blank" rel="noopener noreferrer" className="text-xs" style={{ color: 'var(--purple)' }}>
-              🧩 Purrfect Claw Skill API ↗
+            <a href="/api/skill" target="_blank" rel="noopener noreferrer" className="text-xs flex items-center gap-1" style={{ color: 'var(--purple)' }}>
+              <Puzzle size={11} /> Purrfect Claw Skill API ↗
             </a>
           </div>
           <div className="flex items-center gap-2">

@@ -1,17 +1,18 @@
 'use client';
 
+import { TrendingUp, TrendingDown, Sparkles, Hash, AlertTriangle } from 'lucide-react';
 import { FeedEvent } from '@/lib/types';
 
-const TYPE_META: Record<FeedEvent['type'], { icon: string; label: string }> = {
-  SIGNAL_UP:   { icon: '▲', label: 'Rising' },
-  SIGNAL_DOWN: { icon: '▼', label: 'Falling' },
-  NEW_TOKEN:   { icon: '✦', label: 'New token' },
-  NARRATIVE:   { icon: '◈', label: 'Narrative' },
-  ALERT:       { icon: '⚠', label: 'Alert' },
+const TYPE_META: Record<FeedEvent['type'], { Icon: React.ElementType; label: string }> = {
+  SIGNAL_UP:   { Icon: TrendingUp,   label: 'Rising' },
+  SIGNAL_DOWN: { Icon: TrendingDown, label: 'Falling' },
+  NEW_TOKEN:   { Icon: Sparkles,     label: 'New token' },
+  NARRATIVE:   { Icon: Hash,         label: 'Narrative' },
+  ALERT:       { Icon: AlertTriangle, label: 'Alert' },
 };
 
 const PLATFORM_LABEL: Record<string, string> = {
-  X: '𝕏 Twitter', TG: '✈ Telegram', Reddit: '◉ Reddit', Discord: '⬡ Discord',
+  X: 'X / Twitter', TG: 'Telegram', Reddit: 'Reddit', Discord: 'Discord',
 };
 
 function timeAgo(d: Date) {
@@ -27,7 +28,6 @@ interface Props { events: FeedEvent[]; }
 export default function LiveFeed({ events }: Props) {
   return (
     <div className="card h-full flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Signal Feed</span>
@@ -36,53 +36,31 @@ export default function LiveFeed({ events }: Props) {
             LIVE
           </span>
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {events.length} events
-        </span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{events.length} events</span>
       </div>
 
-      {/* Events */}
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
         {events.map((event, i) => {
-          const meta = TYPE_META[event.type];
+          const { Icon, label } = TYPE_META[event.type];
           return (
-            <div
-              key={event.id}
-              className="rounded-xl p-3 animate-slide-right"
-              style={{
-                background: `${event.color}07`,
-                border: `1px solid ${event.color}18`,
-                animationDelay: i === 0 ? '0ms' : '60ms',
-                animationFillMode: 'both',
-              }}
-            >
+            <div key={event.id} className="rounded-xl p-3 animate-slide-right"
+              style={{ background: `${event.color}07`, border: `1px solid ${event.color}18`, animationDelay: i === 0 ? '0ms' : '60ms', animationFillMode: 'both' }}>
               <div className="flex items-start gap-2.5">
-                {/* Icon */}
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5"
-                  style={{ background: `${event.color}18`, color: event.color }}>
-                  {meta.icon}
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ background: `${event.color}18` }}>
+                  <Icon size={13} color={event.color} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                    <span className="font-bold text-xs" style={{ color: event.color }}>
-                      {event.emoji} ${event.ticker}
-                    </span>
+                    <span className="font-bold text-xs" style={{ color: event.color }}>${event.ticker}</span>
                     <span className="text-xs px-1.5 py-px rounded font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' }}>
-                      {meta.label}
-                    </span>
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' }}>{label}</span>
                   </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                    {event.message}
-                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{event.message}</p>
                   <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {PLATFORM_LABEL[event.platform]}
-                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{PLATFORM_LABEL[event.platform]}</span>
                     <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {timeAgo(event.timestamp)}
-                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{timeAgo(event.timestamp)}</span>
                   </div>
                 </div>
               </div>
@@ -91,7 +69,6 @@ export default function LiveFeed({ events }: Props) {
         })}
       </div>
 
-      {/* Footer */}
       <div className="px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
         <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
           Monitoring X · Telegram · Reddit · Discord

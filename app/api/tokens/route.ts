@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calcSignal, getTier, getRisk, formatAge, formatMarketCap, blipPosition, tokenEmoji, tokenColor, extractNarratives } from '@/lib/signalEngine';
 import { Token, Chain } from '@/lib/types';
+import type { FourMemeToken } from '@/app/api/fourmeme/route';
+import { recordFireTokens, seedHistoryFromTokens } from '@/lib/signalHistory';
+
+export const runtime = 'nodejs';
 
 const CHAIN_QUERIES: Record<Chain, string[]> = {
   bsc:      ['fourmeme', 'four.meme'],
@@ -22,7 +26,75 @@ async function fetchDexScreener(query: string): Promise<any[]> {
   return data.pairs || [];
 }
 
-function mapPairToToken(pair: any, chain: Chain): Token | null {
+async function fetchFourMemeIndex(): Promise<Record<string, FourMemeToken>> {
+  try {
+    const res = await fetch('https://four.meme/meme-api/v1/public/token/ranking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Origin': 'https://four.meme', 'Referer': 'https://four.meme/en', 'User-Agent': 'Mozilla/5.0' },
+      body: JSON.stringify({ type: 'CAP', pageNo: 1, pageSize: 100 }),
+      next: { revalidate: 30 },
+    });
+    if (!res.ok) return {};
+    const json = await res.json();
+    const tokens: any[] = json.data || [];
+    const index: Record<string, FourMemeToken> = {};
+    for (const t of tokens) {
+      const addr = (t.tokenAddress || '').toLowerCase();
+      if (!addr) continue;
+      const progress = Math.min(1, parseFloat(t.progress || '0') || 0);
+      index[addr] = {
+        tokenAddress: addr,
+        name: t.name || '',
+        shortName: t.shortName || '',
+        userAddress: t.userAddress || '',
+        img: t.img || '',
+        imageUrl: t.img ? `https://four.meme${t.img}` : '',
+        progress,
+        bondingCurveBnb: parseFloat((progress * 24).toFixed(3)),
+        price: t.price || '0',
+        cap: t.cap || t.capUSDT || '0',
+        day1Vol: t.day1Vol || t.day1VolUSDT,
+        hourVol: t.hourVol,
+        createDate: parseInt(t.createDate || '0', 10),
+        status: t.status || 'UNKNOWN',
+        tag: t.tag || '',
+        day1Increase: t.day1Increase,
+        hourIncrease: t.hourIncrease,
+      };
+    }
+    // Also fetch NEW tokens for bonding curve tokens not in CAP ranking
+    try {
+      const res2 = await fetch('https://four.meme/meme-api/v1/public/token/ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Origin': 'https://four.meme', 'Referer': 'https://four.meme/en', 'User-Agent': 'Mozilla/5.0' },
+        body: JSON.stringify({ type: 'NEW', pageNo: 1, pageSize: 100 }),
+        next: { revalidate: 30 },
+      });
+      if (res2.ok) {
+        const j2 = await res2.json();
+        for (const t of (j2.data || [])) {
+          const addr = (t.tokenAddress || '').toLowerCase();
+          if (!addr || index[addr]) continue;
+          const progress = Math.min(1, parseFloat(t.progress || '0') || 0);
+          index[addr] = {
+            tokenAddress: addr, name: t.name || '', shortName: t.shortName || '',
+            userAddress: t.userAddress || '', img: t.img || '',
+            imageUrl: t.img ? `https://four.meme${t.img}` : '',
+            progress, bondingCurveBnb: parseFloat((progress * 24).toFixed(3)),
+            price: t.price || '0', cap: t.cap || '0',
+            createDate: parseInt(t.createDate || '0', 10),
+            status: t.status || 'UNKNOWN', tag: t.tag || '',
+          };
+        }
+      }
+    } catch { /* ignore new-token fetch failure */ }
+    return index;
+  } catch {
+    return {};
+  }
+}
+
+function mapPairToToken(pair: any, chain: Chain, fourMemeIndex: Record<string, FourMemeToken> = {}): Token | null {
   try {
     const base = pair.baseToken;
     if (!base?.name || !base?.symbol) return null;
@@ -55,8 +127,8 @@ function mapPairToToken(pair: any, chain: Chain): Token | null {
     const ticker = base.symbol?.toUpperCase().slice(0, 10) || '???';
     const color = tokenColor(ticker);
     const emoji = tokenEmoji(chain, base.name);
-    const prevTxns = Math.max(1, buysH1 - 3);
-    const velocityDelta = Math.floor((buysH1 - prevTxns) * 12);
+    const avgBuysPerHour = buys24h / 24;
+    const velocityDelta = Math.round(buysH1 - avgBuysPerHour);
 
     const isFourMeme = pair.dexId === 'fourmeme' || pair.dexId?.includes('four');
     // Four.meme bonding curve graduates at ~24 BNB (~$14.4k). Use fdv as proxy.
@@ -70,10 +142,44 @@ function mapPairToToken(pair: any, chain: Chain): Token | null {
     const info = pair.info || {};
     const socials: { type: string; url: string }[] = info.socials || [];
     const websites: { label: string; url: string }[] = info.websites || [];
-    const imageUrl: string | undefined = info.imageUrl || undefined;
     const twitterUrl = socials.find(s => s.type === 'twitter')?.url;
     const telegramUrl = socials.find(s => s.type === 'telegram')?.url;
     const websiteUrl = websites[0]?.url;
+
+    // Look up Four.meme enrichment data
+    const fm = fourMemeIndex[(base.address || '').toLowerCase()];
+    // Proxy Four.meme images through our edge route to bypass CDN hotlink protection
+    const proxyImg = (u?: string) => u ? `/api/img?url=${encodeURIComponent(u)}` : undefined;
+    const imageUrl: string | undefined = proxyImg(fm?.imageUrl) ?? info.imageUrl ?? undefined;
+    // Use Four.meme's exact progress (0–1 scale) converted to %
+    const fmBondingProgress = fm ? Math.round(fm.progress * 100) : bondingCurveProgress;
+    const fmBondingBnb = fm?.bondingCurveBnb;
+    const creatorAddress = fm?.userAddress;
+    const fourMemeStatus = fm?.status;
+    const fourMemeTag = fm?.tag;
+    // Use Four.meme creation date if available (more accurate)
+    const actualCreatedAt = (fm?.createDate && fm.createDate > 0) ? fm.createDate : createdAt;
+
+    // Graduation predictor: estimate minutes to 24 BNB based on bonding curve velocity
+    let timeToGradMinutes: number | undefined;
+    if (isFourMeme && fmBondingProgress < 100 && fm && fm.createDate > 0 && fm.progress > 0.02) {
+      const ageHrs = (Date.now() - fm.createDate) / 3_600_000;
+      if (ageHrs > 0.1) {
+        const baseVelocity = fm.progress / Math.max(ageHrs, 0.25); // progress/hr lifetime avg
+        let recentFactor = 1.0;
+        if (fm.hourVol && fm.day1Vol) {
+          const hourV = parseFloat(fm.hourVol);
+          const dayV = parseFloat(fm.day1Vol);
+          const avgHourlyVol = dayV / Math.min(ageHrs, 24);
+          if (avgHourlyVol > 0 && hourV > 0) {
+            recentFactor = Math.min(Math.max(hourV / avgHourlyVol, 0.1), 5);
+          }
+        }
+        const velocity = baseVelocity * (0.4 + 0.6 * recentFactor);
+        const mins = Math.round(((1 - fm.progress) / velocity) * 60);
+        if (mins >= 1 && mins <= 1440) timeToGradMinutes = mins;
+      }
+    }
 
     return {
       id: base.address || pair.pairAddress,
@@ -88,7 +194,7 @@ function mapPairToToken(pair: any, chain: Chain): Token | null {
       signalDelta: Math.round(priceChangeH1 * 0.3),
       tier: getTier(signal),
       risk: getRisk({ ageHours, liquidity, sellsRatio }),
-      socialVelocity: buysH1 * 14 + Math.floor(Math.random() * 50),
+      socialVelocity: buysH1,
       velocityDelta,
       priceUsd: pair.priceUsd || '0',
       priceChange1h: priceChangeH1,
@@ -98,15 +204,15 @@ function mapPairToToken(pair: any, chain: Chain): Token | null {
       marketCap: formatMarketCap(marketCap),
       fdv: pair.fdv || 0,
       buys24h, sells24h, buys1h: buysH1, sells1h: sellsH1,
-      bondingCurveProgress,
-      listedOnDex: !isFourMeme || bondingCurveProgress >= 100,
+      bondingCurveProgress: isFourMeme ? fmBondingProgress : bondingCurveProgress,
+      listedOnDex: !isFourMeme || (isFourMeme ? fmBondingProgress >= 100 : bondingCurveProgress >= 100),
       dexName: pair.dexId || 'unknown',
       narratives: extractNarratives(base.name, ticker),
       platforms: ['X', 'TG'],
       blipX: pos.x,
       blipY: pos.y,
-      age: formatAge(createdAt),
-      createdAt,
+      age: formatAge(actualCreatedAt),
+      createdAt: actualCreatedAt,
       sparkline: Array.from({ length: 11 }, (_, i) =>
         Math.max(1, Math.min(99, signal - 20 + i * 3 + Math.random() * 5))
       ).map(Math.round),
@@ -118,6 +224,11 @@ function mapPairToToken(pair: any, chain: Chain): Token | null {
       twitterUrl,
       telegramUrl,
       websiteUrl,
+      creatorAddress,
+      bondingCurveBnb: fmBondingBnb,
+      fourMemeStatus,
+      fourMemeTag,
+      timeToGradMinutes,
     } satisfies Token;
   } catch {
     return null;
@@ -130,7 +241,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const queries = CHAIN_QUERIES[chain] || CHAIN_QUERIES.bsc;
-    const results = await Promise.all(queries.map(fetchDexScreener));
+    // Fetch DexScreener data + Four.meme enrichment in parallel (BSC only)
+    const [results, fourMemeIndex] = await Promise.all([
+      Promise.all(queries.map(fetchDexScreener)),
+      chain === 'bsc' ? fetchFourMemeIndex() : Promise.resolve({} as Record<string, FourMemeToken>),
+    ]);
     const allPairs = results.flat();
 
     // Deduplicate by pairAddress
@@ -146,10 +261,27 @@ export async function GET(req: NextRequest) {
     const filtered = unique.filter(p => p.chainId === chainId);
 
     const tokens = filtered
-      .map(p => mapPairToToken(p, chain))
+      .map(p => mapPairToToken(p, chain, fourMemeIndex))
       .filter((t): t is Token => t !== null)
       .sort((a, b) => b.signal - a.signal)
       .slice(0, 30);
+
+    // Record FIRE/HOT tokens for historical accuracy tracking
+    try {
+      const fireHot = tokens.filter(t => t.tier === 'FIRE' || t.tier === 'HOT').map(t => ({
+        address: t.address, ticker: t.ticker, name: t.name,
+        chain: t.chain, signal: t.signal, priceUsd: t.priceUsd, tier: t.tier,
+        listedOnDex: t.listedOnDex,
+      }));
+      // Seed on first run so accuracy badge has data immediately
+      seedHistoryFromTokens(tokens.map(t => ({
+        address: t.address, ticker: t.ticker, name: t.name, chain: t.chain,
+        signal: t.signal, priceUsd: t.priceUsd, tier: t.tier,
+        priceChange24h: t.priceChange24h, priceChange1h: t.priceChange1h,
+        createdAt: t.createdAt,
+      })));
+      recordFireTokens(fireHot);
+    } catch { /* don't let history errors break the response */ }
 
     return NextResponse.json({ tokens, updatedAt: Date.now() });
   } catch (err) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Search, HelpCircle, RefreshCw } from 'lucide-react';
 import { Stats, Token, CHAIN_META, Chain } from '@/lib/types';
 
 interface Props {
@@ -44,12 +45,14 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
             <span className="absolute inset-0 rounded-lg animate-ring" style={{ border: '1px solid rgba(0,230,118,0.4)' }} />
           </div>
           <div>
-            <span className="font-bold text-base tracking-tight">
-              Meme<span className="text-glow-green" style={{ color: 'var(--green)' }}>Radar</span>
-            </span>
-            <div className="flex items-center gap-1 -mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full animate-live" style={{ background: 'var(--green)' }} />
-              <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>live</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-base tracking-tight">
+                Meme<span className="text-glow-green" style={{ color: 'var(--green)' }}>Radar</span>
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-live" style={{ background: 'var(--green)' }} />
+            </div>
+            <div className="font-mono text-xs -mt-0.5 hidden sm:block" style={{ color: 'var(--text-muted)' }}>
+              Bloomberg Terminal for Four.meme
             </div>
           </div>
         </div>
@@ -57,7 +60,7 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
         {/* Search */}
         <div className="flex-1 max-w-md">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>🔍</span>
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
             <input
               type="text"
               placeholder="Search by token name or ticker…"
@@ -93,13 +96,13 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
         {/* Right controls */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="font-mono text-xs hidden md:block" style={{ color: 'var(--text-muted)' }}>UTC {time}</span>
-          <button className="btn btn-ghost text-xs" onClick={onHelp}>
-            ? How it works
+          <button className="btn btn-ghost text-xs flex items-center gap-1.5" onClick={onHelp}>
+            <HelpCircle size={13} /> <span className="hidden sm:inline">How it works</span>
           </button>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
             style={{ background: `${chainMeta.color}15`, border: `1px solid ${chainMeta.color}35`, color: chainMeta.color }}>
             <span className="w-1.5 h-1.5 rounded-full animate-live" style={{ background: chainMeta.color }} />
-            {chainMeta.icon} {chainMeta.label}
+            {chainMeta.label}
           </div>
         </div>
       </div>

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { Token } from '@/lib/types';
+import TokenAvatar from '@/components/ui/TokenAvatar';
 
-interface SavedAlert { id: string; ticker: string; emoji: string; threshold: number; color: string; }
+interface SavedAlert { id: string; ticker: string; threshold: number; color: string; }
 
 interface Props {
   tokens: Token[];
@@ -48,7 +49,7 @@ export default function MyAlerts({ tokens, onAlert }: Props) {
               style={{ background: reached ? `${alert.color}10` : 'rgba(255,255,255,0.02)', border: `1px solid ${reached ? alert.color + '35' : 'var(--border)'}` }}
               onClick={() => token && onAlert(token)}
             >
-              <span className="text-xl">{alert.emoji}</span>
+              <TokenAvatar color={alert.color} name={alert.ticker} ticker={alert.ticker} size={28} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-bold text-xs" style={{ color: alert.color }}>${alert.ticker}</span>

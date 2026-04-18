@@ -3,18 +3,24 @@
 import { useState } from 'react';
 
 interface Props {
-  emoji: string;
+  emoji?: string;
   color: string;
   imageUrl?: string;
   name: string;
+  ticker?: string;
   size?: number;
   className?: string;
   style?: React.CSSProperties;
 }
 
-export default function TokenAvatar({ emoji, color, imageUrl, name, size = 36, className = '', style }: Props) {
+export default function TokenAvatar({ color, imageUrl, name, ticker, size = 36, className = '', style }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
   const radius = Math.round(size * 0.28);
+  const raw = (ticker || name).replace(/^\$/, '');
+  const ascii = raw.replace(/[^A-Z0-9]/gi, '').slice(0, 2).toUpperCase();
+  // Fallback for CJK/non-ASCII names: use first 2 printable characters
+  const letters = ascii || raw.replace(/\s+/g, '').slice(0, 2) || '??';
+  const fontSize = Math.round(size * 0.35);
 
   if (imageUrl && !imgFailed) {
     return (
@@ -23,7 +29,7 @@ export default function TokenAvatar({ emoji, color, imageUrl, name, size = 36, c
         alt={name}
         width={size}
         height={size}
-        className={`flex-shrink-0 object-cover ${className}`}
+        className={`shrink-0 object-cover ${className}`}
         style={{ borderRadius: radius, width: size, height: size, border: `1px solid ${color}28`, ...style }}
         onError={() => setImgFailed(true)}
       />
@@ -32,18 +38,22 @@ export default function TokenAvatar({ emoji, color, imageUrl, name, size = 36, c
 
   return (
     <div
-      className={`flex items-center justify-center flex-shrink-0 ${className}`}
+      className={`flex items-center justify-center shrink-0 select-none ${className}`}
       style={{
-        width: size, height: size,
-        background: `${color}14`,
-        border: `1px solid ${color}28`,
+        width: size,
+        height: size,
+        background: `${color}18`,
+        border: `1px solid ${color}35`,
         borderRadius: radius,
-        fontSize: Math.round(size * 0.48),
-        lineHeight: 1,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize,
+        fontWeight: 700,
+        color,
+        letterSpacing: '-0.03em',
         ...style,
       }}
     >
-      {emoji}
+      {letters}
     </div>
   );
 }
