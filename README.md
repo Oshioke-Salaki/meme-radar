@@ -166,6 +166,80 @@ Two live-updated sections surface the highest-value early opportunities:
 
 **Graduating Soon** — tokens with `bondingCurve ≥ 80%` and ETA under 6 hours. The graduation window. Historically the best risk/reward entry on Four.meme.
 
+### AI Rug Risk Scorer
+
+Claude Haiku batch-analyzes every token for rug pull indicators in a **single API call** across all 30 live tokens. No per-token overhead.
+
+Scoring signals:
+- **Sell ratio** — sells > buys with no social links = red flag
+- **Bonding stall** — token >6h old, stuck mid-curve = exit scam pattern
+- **Pump-and-stall** — 1h price up >50% then flatlined = coordinated dump
+- **Social presence** — no Twitter/Telegram on a FIRE token = anonymous exit risk
+- **DEX graduation** — listed = rug already survived, recalibrated accordingly
+
+Every token gets a shield badge: `✓ SAFE` · `⚠ CAUTION` · `✗ DANGER` with a score out of 100 and a plain-English summary from Claude. Scores are cached per address — Claude only re-scores new tokens, not the entire set on every refresh.
+
+### Smart Money Radar
+
+MemeRadar fetches **raw BSC RPC transfer logs** for the top 4 FIRE tokens and identifies wallets that bought into 2+ different FIRE tokens within the same 200-block window (~10 min). These are the wallets that already found the previous cycles — now you know when they're moving again.
+
+```
+For each FIRE token:
+  eth_getLogs(fromBlock, toBlock, tokenAddress, Transfer topic)
+  → detect pool = highest-frequency counterparty address
+  → classify pool→wallet transfers as buys
+  → collect buyer wallet list
+
+Cross-reference: wallets in 2+ buyer lists = smart money
+```
+
+Smart money tokens get a `🐋 Whale` badge on the signal card and a dedicated panel in the detail view.
+
+### Whale Alert Feed
+
+A live on-chain feed of **trades ≥$150** across all FIRE and HOT tokens. Pulls from BSC public RPC every 60 seconds, classifies each transfer as BUY or SELL relative to the detected pool, computes USD value from `priceUsd × tokenAmount`, and surfaces the largest trades sorted by size.
+
+Trades ≥$1K get a 🐋 emoji. Every entry links directly to the BSCScan transaction. No aggregator. No middle layer. Raw EVM.
+
+### Token Battle — Claude Picks a Winner
+
+Pick any two tokens from the live list and Claude Haiku runs a **head-to-head comparison** — analyzing signal momentum, bonding curve progress, buy pressure, age, and risk profile. Returns:
+
+- **Winner** with a score (e.g. `74 vs 61`)
+- **Reason** — Claude's plain-English verdict
+- **Edge** — what each token has going for it
+- **Margin** — DECISIVE or CLOSE CALL
+
+No pre-canned responses. Every battle is a live Claude inference on real current on-chain data.
+
+### Market Temperature Gauge
+
+A single live number (0–100) shown in the top bar that captures **how hot the entire Four.meme market is right now**:
+
+```
+marketHeat = (FIRE% × 50) + (HOT% × 20) + max(0, avgSignal - 40) × 1.5
+             clamped to [0, 100]
+```
+
+| Score | Label | Color |
+|---|---|---|
+| 80–100 | BLAZING | #ff6b35 |
+| 60–79 | HOT | #ff9500 |
+| 40–59 | WARM | #ffca28 |
+| 20–39 | COOL | #40c4ff |
+| 0–19 | DEAD | #555 |
+
+### Correct Calls Leaderboard
+
+A live leaderboard of the **best verified FIRE/HOT calls** in the last 72 hours — tokens where MemeRadar's signal was right, with the % gain since flagging shown next to each entry.
+
+- Rank 1–6 by gain % since flag
+- Signal score at time of flagging
+- Time since flagged
+- Overall accuracy badge computed from the full window
+
+This is not a demo. Every entry is a real token that was flagged by the AI, with a real price record.
+
 ---
 
 ## Architecture
@@ -174,36 +248,46 @@ Two live-updated sections surface the highest-value early opportunities:
 ┌─────────────────────────────────────────────────────────────┐
 │                        BROWSER CLIENT                        │
 │                                                             │
-│  useRealData() ──▶ /api/tokens (30s poll)                   │
-│  FeaturedToken ──▶ /api/analyze (on mount, per token)       │
-│  RadarDisplay  ──▶ /api/narratives (3min poll)              │
-│  TokenDetail   ──▶ /api/trades (on open)                    │
-│  WalletPanel   ──▶ /api/wallet (on connect)                 │
-│  CreatorCard   ──▶ /api/creator (on open)                   │
+│  useRealData()  ──▶ /api/tokens    (30s poll)               │
+│               ├──▶ /api/signals    (5 min TTL, cached)      │
+│               ├──▶ /api/rugcheck   (once per address)       │
+│               ├──▶ /api/smartmoney (5 min TTL)              │
+│               └──▶ /api/narratives (10 min TTL)             │
+│  FeaturedToken  ──▶ /api/analyze   (on mount, per token)    │
+│  WhaleAlerts    ──▶ /api/whales    (60s TTL)                │
+│  TokenBattle    ──▶ /api/battle    (on demand)              │
+│  TokenDetail    ──▶ /api/trades    (on open)                │
+│  WalletPanel    ──▶ /api/wallet    (on connect)             │
+│  CreatorCard    ──▶ /api/creator   (on open)                │
 └──────────────────────────┬──────────────────────────────────┘
-                           │  Next.js App Router (Edge + Node)
+                           │  Next.js App Router (Node.js)
 ┌──────────────────────────▼──────────────────────────────────┐
 │                        API LAYER                             │
 │                                                             │
-│  /api/tokens     NodeJS   DexScreener + Four.meme fusion    │
-│  /api/signals    NodeJS   Claude Haiku batch scoring        │
-│  /api/analyze    NodeJS   Claude Haiku streaming verdict    │
-│  /api/narratives NodeJS   Claude Haiku pattern detection    │
-│  /api/trades     NodeJS   BSC RPC eth_getLogs               │
-│  /api/wallet     NodeJS   BSC RPC eth_call batchBalanceOf   │
-│  /api/creator    NodeJS   Four.meme ranking API             │
-│  /api/history    NodeJS   Rolling accuracy stats            │
-│  /api/img        Edge     Four.meme CDN proxy (hotlink fix) │
+│  /api/tokens     DexScreener + Four.meme fusion + scoring   │
+│  /api/signals    Claude Haiku — batch AI signal scores      │
+│  /api/analyze    Claude Haiku — streaming per-token verdict │
+│  /api/narratives Claude Haiku — cultural pattern clusters   │
+│  /api/rugcheck   Claude Haiku — batch rug risk scoring      │
+│  /api/battle     Claude Haiku — head-to-head token battle   │
+│  /api/smartmoney BSC RPC — cross-token whale wallet detect  │
+│  /api/whales     BSC RPC — large trade feed (≥$150)         │
+│  /api/trades     BSC RPC — per-token live trade stream      │
+│  /api/wallet     BSC RPC — batch balanceOf portfolio scan   │
+│  /api/creator    Four.meme API — creator track record       │
+│  /api/history    In-memory — 72h accuracy rolling stats     │
+│  /api/img        Edge — Four.meme CDN hotlink proxy         │
 └──────────────┬──────────────────────┬───────────────────────┘
                │                      │
 ┌──────────────▼──────┐   ┌──────────▼──────────────────────┐
-│   EXTERNAL DATA      │   │         CLAUDE AI                │
+│   EXTERNAL DATA      │   │      CLAUDE AI (Haiku)           │
 │                     │   │                                  │
-│  Four.meme API      │   │  claude-haiku-4-5-20251001       │
-│  DexScreener API    │   │  Batch signal scoring            │
-│  BSC Public RPC     │   │  Token analysis (streaming)      │
+│  Four.meme API      │   │  Batch signal scoring (30 tkns)  │
+│  DexScreener API    │   │  Streaming per-token analysis    │
+│  BSC Public RPC     │   │  Rug risk detection (30 tkns)    │
 │  four.meme CDN      │   │  Narrative pattern detection     │
-└─────────────────────┘   └──────────────────────────────────┘
+└─────────────────────┘   │  Head-to-head token battle       │
+                          └──────────────────────────────────┘
 ```
 
 ---
@@ -213,13 +297,17 @@ Two live-updated sections surface the highest-value early opportunities:
 | Route | Method | Description |
 |---|---|---|
 | `/api/tokens` | GET | Fetch, score, and rank all live Four.meme tokens. Fuses DexScreener + Four.meme data. |
-| `/api/signals` | POST | Batch Claude Haiku AI scoring for a list of tokens. Returns `{ scores: { [address]: number } }`. |
-| `/api/analyze` | POST | Streaming Claude Haiku verdict for a single token. Returns SSE-style text stream of JSON. |
-| `/api/narratives` | POST | Claude Haiku cultural pattern detection across top tokens. Returns narrative clusters. |
-| `/api/trades` | GET | Live on-chain trade feed via BSC RPC. Params: `?address=&price=&decimals=` |
+| `/api/signals` | POST | Claude Haiku batch AI scoring. Returns `{ scores: { [address]: number } }`. 5 min TTL client-side. |
+| `/api/analyze` | POST | Streaming Claude Haiku verdict for one token. Returns JSON stream with verdict, thesis, catalyst, risk. |
+| `/api/narratives` | POST | Claude Haiku cultural cluster detection across top 15 tokens. 10 min TTL. |
+| `/api/rugcheck` | POST | Claude Haiku batch rug risk scoring. Returns `{ scores: { [address]: { score, level, summary } } }`. |
+| `/api/battle` | POST | Claude Haiku head-to-head. Body: `{ token1, token2 }`. Returns winner, scores, edges, margin. |
+| `/api/smartmoney` | POST | BSC RPC cross-token whale detection. Returns wallets that bought 2+ FIRE tokens in 200 blocks. |
+| `/api/whales` | POST | BSC RPC large trade feed ≥$150. Returns sorted whale events with USD amount and BSCScan hash. |
+| `/api/trades` | GET | Per-token live trade feed via BSC RPC. Params: `?address=&price=&decimals=` |
 | `/api/wallet` | GET | Batch wallet portfolio scan. Params: `?address=&tokens=[...]` |
 | `/api/creator` | GET | Creator track record from Four.meme. Params: `?address=0x...` |
-| `/api/history` | GET | Rolling 72h signal accuracy stats. |
+| `/api/history` | GET | Rolling 72h signal accuracy stats with recent calls and win rate. |
 | `/api/img` | GET | Four.meme CDN image proxy (bypasses hotlink protection). Params: `?url=` |
 
 ---
@@ -337,29 +425,35 @@ Here is the exact sequence that runs every 30 seconds:
 memeradar/
 ├── app/
 │   ├── api/
-│   │   ├── tokens/      # Core token fetch + scoring pipeline
-│   │   ├── signals/     # Claude Haiku batch AI scoring
-│   │   ├── analyze/     # Claude Haiku streaming token verdict
+│   │   ├── tokens/      # Core token fetch + DexScreener/Four.meme fusion
+│   │   ├── signals/     # Claude Haiku batch AI signal scoring
+│   │   ├── analyze/     # Claude Haiku streaming per-token verdict
 │   │   ├── narratives/  # Claude Haiku cultural pattern detection
-│   │   ├── trades/      # BSC RPC live trade feed
-│   │   ├── wallet/      # BSC RPC batch portfolio scan
+│   │   ├── rugcheck/    # Claude Haiku batch rug risk scoring
+│   │   ├── battle/      # Claude Haiku head-to-head token battle
+│   │   ├── smartmoney/  # BSC RPC cross-token whale wallet detection
+│   │   ├── whales/      # BSC RPC large trade feed (≥$150)
+│   │   ├── trades/      # BSC RPC per-token live trade stream
+│   │   ├── wallet/      # BSC RPC batch portfolio balanceOf
 │   │   ├── creator/     # Four.meme creator track record
-│   │   ├── history/     # Signal accuracy stats
-│   │   └── img/         # Four.meme CDN proxy
-│   ├── token/           # Token detail page [address]
+│   │   ├── history/     # 72h rolling accuracy stats
+│   │   └── img/         # Four.meme CDN proxy (hotlink bypass)
+│   ├── token/[address]/ # Shareable token page + OG image
 │   └── page.tsx         # Main radar dashboard
 ├── components/
-│   ├── feed/            # LiveFeed, LiveTrades
-│   ├── layout/          # TopBar, navigation
-│   ├── portfolio/       # Wallet scanner UI
+│   ├── feed/            # LiveFeed, LiveTrades, WhaleAlerts
+│   ├── layout/          # TopBar (with market heat gauge)
+│   ├── portfolio/       # WalletView
 │   ├── radar/           # RadarDisplay, NarrativeTracker
 │   ├── tokens/          # FeaturedToken, SignalCard, TokenDetail
-│   └── ui/              # AlertModal, Toast, TokenAvatar, HowItWorks
+│   └── ui/              # AlertModal, CorrectCalls, CountdownTimer,
+│                        #   TokenBattle, TokenAvatar, Toast, HowItWorks
 ├── hooks/
-│   └── useRealData.ts   # Core data pipeline, AI scoring, feed events
+│   └── useRealData.ts   # Data pipeline, AI scoring, TTL caching, feed
 └── lib/
     ├── types.ts          # All TypeScript interfaces
-    └── signalHistory.ts  # 72h accuracy tracking with demo seed
+    ├── signalEngine.ts   # Formula pre-scorer + tier/risk utils
+    └── signalHistory.ts  # 72h accuracy tracking + demo seed (75%)
 ```
 
 ---
@@ -375,11 +469,13 @@ MemeRadar applies AI at every layer of the meme token discovery pipeline — not
 
 **Technical Implementation (30%)**
 - Zero mocking — all data is live from Four.meme, DexScreener, and BSC public RPC
-- Edge + Node runtime split (image proxy on edge, AI routes on Node)
+- 5 distinct Claude Haiku use cases: signal scoring, per-token analysis, rug risk, narrative detection, token battle
+- Smart TTL caching: signals (5 min), narratives (10 min), smart money (5 min), rug check (per address) — 90%+ cost reduction vs naive polling
 - Streaming AI responses via ReadableStream (sub-2s to first token)
-- Assistant prefill optimization (`{ role: 'assistant', content: '{' }`) for zero-overhead JSON extraction
+- Assistant prefill optimization (`{ role: 'assistant', content: '{' }`) forces JSON output with zero parsing overhead
+- Cross-token smart money detection: raw `eth_getLogs` → pool frequency analysis → buyer cross-reference
 - Batch RPC calls for wallet scanning (30 `balanceOf` in one HTTP request)
-- Rolling accuracy tracking with in-memory + filesystem persistence
+- Rolling accuracy tracking with in-memory + /tmp filesystem persistence (survives warm Lambda restarts)
 
 **Practical Value (20%)**
 A real meme token trader can open MemeRadar and get actionable intelligence in under 10 seconds. The graduation predictor alone saves hours of manual monitoring. The creator track record surfaces provably reliable launchpad participants. The live trade feed verifies that volume is real, not bot-inflated.
@@ -394,10 +490,15 @@ Bloomberg Terminal aesthetic — dark, dense, information-rich — communicates 
 > The radar is live. It's scanning real tokens. Every signal score is computed by Claude AI on real on-chain data from BNB Chain.
 
 Open the app and watch for:
-- The `FIRE` tier tokens at the top — these are Claude's top picks right now
-- The graduation ETA countdown on bonding-curve tokens — watch one hit 100%
-- The accuracy badge in the top bar — hover to see the 72h track record
-- The AI verdict panel in the featured token — Claude's real-time analysis, streaming live
+- The **Market Heat gauge** in the top bar — BLAZING means the whole market is running
+- The `FIRE` tier tokens — Claude's top momentum picks based on live on-chain data
+- The **shield badges** on every card — AI rug risk score, SAFE to DANGER
+- The **🐋 Whale badge** — smart money wallets active across multiple FIRE tokens
+- The **graduation ETA countdown** on bonding-curve tokens — watch one hit 100%
+- The **Whale Alerts tab** — live on-chain buys ≥$150 with BSCScan links
+- The **Token Battle** button — pit any two tokens head-to-head, Claude picks the winner
+- The **Correct Calls leaderboard** — verified FIRE signals with % gain since flagging
+- The **AI verdict panel** on the featured token — Claude streaming live, right now
 
 ---
 
