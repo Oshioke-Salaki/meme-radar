@@ -14,6 +14,9 @@ function XIcon({ size = 13 }: { size?: number }) {
 }
 import Tooltip from '@/components/ui/Tooltip';
 import TokenAvatar from '@/components/ui/TokenAvatar';
+import CountdownTimer from '@/components/ui/CountdownTimer';
+import TokenBattle from '@/components/ui/TokenBattle';
+import { Token as TokenType } from '@/lib/types';
 
 interface AIVerdict {
   verdict: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
@@ -25,15 +28,10 @@ const VERDICT_COLOR = { BULLISH: 'var(--green)', BEARISH: 'var(--pink)', NEUTRAL
 const SUGGESTION_BG = { BUY: 'rgba(0,230,118,0.1)', WATCH: 'rgba(255,202,40,0.1)', AVOID: 'rgba(255,64,129,0.1)' };
 const SUGGESTION_COLOR = { BUY: 'var(--green)', WATCH: 'var(--yellow)', AVOID: 'var(--pink)' };
 
-interface Props { token: Token; onAlert: () => void; }
+interface Props { token: Token; onAlert: () => void; allTokens?: TokenType[]; }
 
-function fmtGradTime(mins: number): string {
-  if (mins < 60) return `~${mins}m`;
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
-}
 
-export default function FeaturedToken({ token, onAlert }: Props) {
+export default function FeaturedToken({ token, onAlert, allTokens = [] }: Props) {
   const sparkData = token.sparkline.map((v, i) => ({ t: i, v }));
   const priceUp = token.priceChange24h >= 0;
   const chain = CHAIN_META[token.chain];
@@ -80,7 +78,7 @@ export default function FeaturedToken({ token, onAlert }: Props) {
       <div className="p-5">
         {/* Header */}
         <div className="flex items-start gap-4 mb-4">
-          <div className="relative flex-shrink-0">
+          <div className="relative shrink-0">
             <TokenAvatar color={token.color} imageUrl={token.imageUrl} name={token.name} ticker={token.ticker} size={56} />
             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
               style={{ background: 'var(--bg-base)' }}>
@@ -193,12 +191,12 @@ export default function FeaturedToken({ token, onAlert }: Props) {
             )}
             {token.timeToGradMinutes && token.bondingCurveProgress < 80 && (
               <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f0b90b' }}>
-                <Clock size={11} strokeWidth={2} /> At current velocity: {fmtGradTime(token.timeToGradMinutes)} to graduation
+                <Clock size={11} strokeWidth={2} /> At current velocity: <CountdownTimer key={`feat-${token.id}-eta`} minutes={token.timeToGradMinutes} /> to graduation
               </p>
             )}
             {token.timeToGradMinutes && token.bondingCurveProgress >= 80 && (
               <p className="text-xs mt-0.5 flex items-center gap-1 font-bold" style={{ color: 'var(--green)' }}>
-                <Clock size={11} strokeWidth={2.5} /> ETA: {fmtGradTime(token.timeToGradMinutes)} to PancakeSwap listing
+                <Clock size={11} strokeWidth={2.5} /> ETA: <CountdownTimer key={`feat-${token.id}-grad`} minutes={token.timeToGradMinutes} /> to PancakeSwap listing
               </p>
             )}
           </div>
@@ -300,6 +298,7 @@ export default function FeaturedToken({ token, onAlert }: Props) {
           <button className="btn btn-primary flex-1 flex items-center justify-center gap-2" onClick={e => { e.stopPropagation(); onAlert(); }}>
             <Bell size={14} /> Set Alert
           </button>
+          {allTokens.length > 1 && <TokenBattle token1={token} allTokens={allTokens} />}
           <button className="btn btn-ghost flex items-center gap-1.5" style={{ fontSize: 13 }} onClick={shareOnTwitter}>
             <XIcon size={13} /> Share
           </button>

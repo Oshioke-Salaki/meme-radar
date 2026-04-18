@@ -92,6 +92,11 @@ export function useRealData(chain: Chain) {
   const prevRef                 = useRef<Token[]>([]);
   const aiScoresRef             = useRef<Map<string, number>>(new Map());
   const rugScoresRef            = useRef<Map<string, RugRisk>>(new Map());
+  const sparklineRef            = useRef<Map<string, number[]>>(new Map());
+  const lastSignalCallRef       = useRef<number>(0);
+  const lastNarrativeCallRef    = useRef<number>(0);
+  const lastSmartMoneyCallRef   = useRef<number>(0);
+  const tokensScannedRef        = useRef<number>(0);
 
   const load = useCallback(async () => {
     try {
@@ -107,26 +112,47 @@ export function useRealData(chain: Chain) {
       const newEvents = buildFeedFromTokens(fresh, prevRef.current);
       setFeed(prev => [...newEvents, ...prev].slice(0, 40));
 
-      // Apply any cached AI scores immediately before first paint
-      const applyAiScores = (list: Token[]) => {
-        const map = aiScoresRef.current;
-        if (map.size === 0) return list;
+      // Stable sparklines — generate once per address, reuse on subsequent refreshes
+      for (const t of fresh) {
+        if (!sparklineRef.current.has(t.address)) {
+          const sig = t.signal;
+          sparklineRef.current.set(t.address, Array.from({ length: 11 }, (_, i) =>
+            Math.max(1, Math.min(99, Math.round(sig - 20 + i * 3 + (Math.abs(t.address.charCodeAt(i % t.address.length) % 10) - 3))))
+          ));
+        }
+      }
+
+      // Apply cached AI scores + rug scores + stable sparklines immediately before first paint
+      const applyCachedScores = (list: Token[]) => {
+        const sigMap = aiScoresRef.current;
+        const rugMap = rugScoresRef.current;
+        const splMap = sparklineRef.current;
         return list.map(t => {
-          const s = map.get(t.address);
-          if (s === undefined) return t;
-          return { ...t, signal: s, tier: s >= 80 ? 'FIRE' : s >= 60 ? 'HOT' : s >= 40 ? 'WARM' : 'COLD', aiScored: true } as Token;
+          const s = sigMap.get(t.address);
+          const r = rugMap.get(t.address.toLowerCase());
+          const spl = splMap.get(t.address);
+          const withSig = s !== undefined
+            ? { ...t, signal: s, tier: s >= 80 ? 'FIRE' : s >= 60 ? 'HOT' : s >= 40 ? 'WARM' : 'COLD', aiScored: true } as Token
+            : t;
+          const withRug = r ? { ...withSig, rugRisk: r } as Token : withSig;
+          return spl ? { ...withRug, sparkline: spl } as Token : withRug;
         }).sort((a, b) => b.signal - a.signal);
       };
 
-      setTokens(applyAiScores(fresh));
+      setTokens(applyCachedScores(fresh));
 
       // Start with keyword-based narratives immediately
       const kwNarratives = buildNarratives(fresh);
       setNarratives(kwNarratives);
 
-      // Fetch AI signal scores asynchronously — updates tokens when ready (~2s)
-      if (chain === 'bsc') {
+      // Fetch AI signal scores — only if >5 min stale or new unseen tokens exist
+      const AI_SIGNAL_TTL = 5 * 60_000;
+      const hasNewTokens = fresh.some(t => !aiScoresRef.current.has(t.address));
+      const signalStale  = Date.now() - lastSignalCallRef.current > AI_SIGNAL_TTL;
+
+      if (chain === 'bsc' && (signalStale || hasNewTokens)) {
         setAiScoring(true);
+        lastSignalCallRef.current = Date.now();
         fetch('/api/signals', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -164,8 +190,12 @@ export function useRealData(chain: Chain) {
           .finally(() => setAiScoring(false));
       }
 
-      // Fetch AI-detected patterns asynchronously (don't block)
-      if (chain === 'bsc') {
+      // Fetch AI-detected patterns — only if >10 min stale
+      const NARRATIVE_TTL = 10 * 60_000;
+      const narrativeStale = Date.now() - lastNarrativeCallRef.current > NARRATIVE_TTL;
+
+      if (chain === 'bsc' && narrativeStale) {
+        lastNarrativeCallRef.current = Date.now();
         fetch('/api/narratives', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -186,12 +216,13 @@ export function useRealData(chain: Chain) {
           })
           .catch(() => { /* keep keyword narratives on failure */ });
       }
-      // Rug check — batch all tokens in one Claude call
-      if (chain === 'bsc') {
+      // Rug check — only score tokens not yet in cache
+      const unscoredForRug = fresh.filter(t => !rugScoresRef.current.has(t.address.toLowerCase()));
+      if (chain === 'bsc' && unscoredForRug.length > 0) {
         fetch('/api/rugcheck', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokens: fresh.map(t => ({
+          body: JSON.stringify({ tokens: unscoredForRug.map(t => ({
             address: t.address,
             ticker: t.ticker,
             buys1h: t.buys1h,
@@ -217,10 +248,13 @@ export function useRealData(chain: Chain) {
           .catch(() => {});
       }
 
-      // Smart money — find wallets buying across multiple FIRE tokens
-      if (chain === 'bsc') {
+      // Smart money — 5 min TTL, find wallets buying across multiple FIRE tokens
+      const SMART_MONEY_TTL = 5 * 60_000;
+      const smartMoneyStale = Date.now() - lastSmartMoneyCallRef.current > SMART_MONEY_TTL;
+      if (chain === 'bsc' && smartMoneyStale) {
         const fireTokens = fresh.filter(t => t.tier === 'FIRE' && t.address.startsWith('0x')).slice(0, 4);
         if (fireTokens.length >= 2) {
+          lastSmartMoneyCallRef.current = Date.now();
           fetch('/api/smartmoney', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -245,8 +279,10 @@ export function useRealData(chain: Chain) {
         }
       }
 
+      // tokensScanned grows monotonically — never jumps backwards
+      tokensScannedRef.current = Math.max(tokensScannedRef.current, fresh.length * 84);
       setStats({
-        tokensScanned: fresh.length * 84 + Math.floor(Math.random() * 200),
+        tokensScanned: tokensScannedRef.current,
         activeSignals: fresh.filter(t => t.signal >= 60).length,
         narrativesTracked: Math.max(4, new Set(fresh.flatMap(t => t.narratives)).size),
         alertsToday: Math.floor(fresh.filter(t => t.tier === 'FIRE').length * 3.5),

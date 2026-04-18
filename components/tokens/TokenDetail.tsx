@@ -14,6 +14,7 @@ function XIcon({ size = 12 }: { size?: number }) {
 }
 import Tooltip from '@/components/ui/Tooltip';
 import TokenAvatar from '@/components/ui/TokenAvatar';
+import CountdownTimer from '@/components/ui/CountdownTimer';
 
 interface Props {
   token: Token;
@@ -39,12 +40,6 @@ interface AIAnalysis {
   risk: string;
   suggestion: 'BUY' | 'WATCH' | 'AVOID';
   suggestedSizeUsd: number;
-}
-
-function fmtGradTime(mins: number): string {
-  if (mins < 60) return `~${mins}m`;
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
 }
 
 const VERDICT_COLOR = { BULLISH: 'var(--green)', BEARISH: 'var(--pink)', NEUTRAL: 'var(--yellow)' };
@@ -314,8 +309,8 @@ export default function TokenDetail({ token, onClose, onAlert }: Props) {
                 style={{ background: token.bondingCurveProgress >= 80 ? 'rgba(0,230,118,0.08)' : 'rgba(240,185,11,0.08)', border: `1px solid ${token.bondingCurveProgress >= 80 ? 'rgba(0,230,118,0.25)' : 'rgba(240,185,11,0.25)'}` }}>
                 <Clock size={13} style={{ color: token.bondingCurveProgress >= 80 ? 'var(--green)' : '#f0b90b', flexShrink: 0 }} />
                 <div>
-                  <div className="text-xs font-bold" style={{ color: token.bondingCurveProgress >= 80 ? 'var(--green)' : '#f0b90b' }}>
-                    Graduation predicted in {fmtGradTime(token.timeToGradMinutes)}
+                  <div className="text-xs font-bold flex items-center gap-1" style={{ color: token.bondingCurveProgress >= 80 ? 'var(--green)' : '#f0b90b' }}>
+                    Graduation in <CountdownTimer key={`detail-${token.id}-grad`} minutes={token.timeToGradMinutes} />
                   </div>
                   <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     Based on bonding curve velocity · PancakeSwap listing at 24 BNB

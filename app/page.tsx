@@ -15,7 +15,9 @@ import HowItWorks from '@/components/ui/HowItWorks';
 import MyAlerts from '@/components/ui/MyAlerts';
 import ToastContainer from '@/components/ui/Toast';
 import AccuracyBadge from '@/components/ui/AccuracyBadge';
+import CorrectCalls from '@/components/ui/CorrectCalls';
 import WalletView from '@/components/portfolio/WalletView';
+import WhaleAlerts from '@/components/feed/WhaleAlerts';
 import { useRealData } from '@/hooks/useRealData';
 import { useToast } from '@/hooks/useToast';
 import { Token, SignalTier, Chain, CHAIN_META } from '@/lib/types';
@@ -46,7 +48,7 @@ function sortTokens(tokens: Token[], key: SortKey) {
 function LoadingSkeleton() {
   return (
     <div className="flex gap-4 items-start">
-      <div className="flex-shrink-0 flex flex-col gap-3" style={{ width: 390 }}>
+      <div className="shrink-0 flex flex-col gap-3" style={{ width: 390 }}>
         <div className="skeleton rounded-2xl" style={{ height: 390 }} />
         <div className="grid grid-cols-4 gap-2">
           {[0,1,2,3].map(i => <div key={i} className="skeleton rounded-xl" style={{ height: 60 }} />)}
@@ -58,7 +60,7 @@ function LoadingSkeleton() {
           {[0,1,2,3].map(i => <div key={i} className="skeleton rounded-2xl" style={{ height: 200 }} />)}
         </div>
       </div>
-      <div className="flex-shrink-0" style={{ width: 310 }}>
+      <div className="shrink-0" style={{ width: 310 }}>
         <div className="skeleton rounded-2xl" style={{ height: 400 }} />
       </div>
     </div>
@@ -77,7 +79,7 @@ export default function Home() {
   const [tierFilter, setTierFilter] = useState<TierFilter>('ALL');
   const [sortKey, setSortKey]       = useState<SortKey>('signal');
   const [dexFilter, setDexFilter]   = useState<DexFilter>('ALL');
-  const [feedTab, setFeedTab]       = useState<'signals' | 'trades'>('trades');
+  const [feedTab, setFeedTab]       = useState<'signals' | 'trades' | 'whales'>('trades');
   const [page, setPage]             = useState(1);
   const [mounted, setMounted]       = useState(false);
 
@@ -115,6 +117,19 @@ export default function Home() {
       }
     });
   }, [tokens, mounted]);
+
+  const marketHeat  = useMemo(() => {
+    if (!tokens.length) return null;
+    const fire = tokens.filter(t => t.tier === 'FIRE').length;
+    const hot  = tokens.filter(t => t.tier === 'HOT').length;
+    const avgSig = tokens.reduce((s, t) => s + t.signal, 0) / tokens.length;
+    const score = Math.round(
+      (fire / tokens.length) * 50 +
+      (hot  / tokens.length) * 20 +
+      Math.max(0, avgSig - 40) * 1.5
+    );
+    return Math.min(100, Math.max(0, score));
+  }, [tokens]);
 
   const sorted      = useMemo(() => sortTokens(tokens, sortKey), [tokens, sortKey]);
   const topToken    = useMemo(() => sortTokens(tokens, 'signal')[0] || null, [tokens]);
@@ -156,7 +171,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen grid-bg">
-      <TopBar stats={stats} search={search} onSearch={setSearch} onHelp={() => setShowHelp(true)} tokens={tokens} chain={chain} />
+      <TopBar stats={stats} search={search} onSearch={setSearch} onHelp={() => setShowHelp(true)} tokens={tokens} chain={chain} marketHeat={marketHeat} />
 
       {/* ── Pitch banner ── */}
       <div style={{ background: 'rgba(0,230,118,0.03)', borderBottom: '1px solid rgba(0,230,118,0.1)' }}>
@@ -233,7 +248,7 @@ export default function Home() {
             <div className="flex gap-4 items-start hero-row">
 
               {/* Left: Radar + tier tiles + my alerts */}
-              <div className="flex-shrink-0 flex flex-col gap-3 hero-left" style={{ width: 390 }}>
+              <div className="shrink-0 flex flex-col gap-3 hero-left" style={{ width: 390 }}>
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>
@@ -291,7 +306,7 @@ export default function Home() {
               {/* Center: Featured + top 4 */}
               <div className="flex-1 min-w-0 flex flex-col gap-3 hero-center">
                 {topToken && (
-                  <FeaturedToken key={`${chain}-${topToken.id}`} token={topToken} onAlert={() => handleAlert(topToken)} />
+                  <FeaturedToken key={`${chain}-${topToken.id}`} token={topToken} onAlert={() => handleAlert(topToken)} allTokens={tokens} />
                 )}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Next hottest</span>
@@ -306,7 +321,7 @@ export default function Home() {
               </div>
 
               {/* Right: Detail or narratives */}
-              <div className="flex-shrink-0 flex flex-col gap-3 hero-right" style={{ width: 310 }}>
+              <div className="shrink-0 flex flex-col gap-3 hero-right" style={{ width: 310 }}>
                 {selectedToken ? (
                   <TokenDetail token={selectedToken} onClose={() => setSelectedId(null)} onAlert={() => handleAlert(selectedToken)} />
                 ) : (
@@ -417,6 +432,9 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            {/* ── Correct Calls Leaderboard ── */}
+            <CorrectCalls />
 
             {/* ── All tokens ── */}
             <div className="flex gap-4 items-start token-list-row">
@@ -552,29 +570,29 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="flex-shrink-0 live-feed-col flex flex-col" style={{ width: 332, height: 600 }}>
+              <div className="shrink-0 live-feed-col flex flex-col" style={{ width: 332, height: 600 }}>
                 {/* Tab switcher */}
                 <div className="flex rounded-xl overflow-hidden mb-2" style={{ border: '1px solid var(--border)' }}>
-                  {(['trades', 'signals'] as const).map(tab => (
-                    <button key={tab} onClick={() => setFeedTab(tab)}
-                      className="flex-1 py-2 text-xs font-semibold capitalize"
+                  {([
+                    { key: 'trades',  label: 'Trades',  icon: <TrendingUp size={11} /> },
+                    { key: 'whales',  label: 'Whales',  icon: <span style={{ fontSize: 11 }}>🐋</span> },
+                    { key: 'signals', label: 'Feed',    icon: <Radio size={11} /> },
+                  ] as const).map(({ key, label, icon }) => (
+                    <button key={key} onClick={() => setFeedTab(key)}
+                      className="flex-1 py-2 text-xs font-semibold"
                       style={{
-                        background: feedTab === tab ? 'rgba(0,230,118,0.1)' : 'rgba(255,255,255,0.02)',
-                        color: feedTab === tab ? 'var(--green)' : 'var(--text-muted)',
-                        border: 'none',
-                        cursor: 'pointer',
+                        background: feedTab === key ? 'rgba(0,230,118,0.1)' : 'rgba(255,255,255,0.02)',
+                        color: feedTab === key ? 'var(--green)' : 'var(--text-muted)',
+                        border: 'none', cursor: 'pointer',
                       }}>
-                      <span className="flex items-center justify-center gap-1.5">
-                        {tab === 'trades' ? <><TrendingUp size={12} /> Live Trades</> : <><Radio size={12} /> Signal Feed</>}
-                      </span>
+                      <span className="flex items-center justify-center gap-1">{icon} {label}</span>
                     </button>
                   ))}
                 </div>
                 <div className="flex-1 min-h-0">
-                  {feedTab === 'trades'
-                    ? <LiveTrades tokens={tokens} smartWallets={smartWallets} />
-                    : <LiveFeed events={feed} />
-                  }
+                  {feedTab === 'trades'  && <LiveTrades tokens={tokens} smartWallets={smartWallets} />}
+                  {feedTab === 'whales'  && <WhaleAlerts tokens={tokens} />}
+                  {feedTab === 'signals' && <LiveFeed events={feed} />}
                 </div>
               </div>
             </div>

@@ -11,9 +11,18 @@ interface Props {
   onHelp: () => void;
   tokens?: Token[];
   chain?: Chain;
+  marketHeat?: number | null;
 }
 
-export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], chain = 'bsc' }: Props) {
+const HEAT_CONFIG = [
+  { min: 80, label: 'BLAZING', color: '#ff6b35', bg: 'rgba(255,107,53,0.12)', border: 'rgba(255,107,53,0.3)' },
+  { min: 60, label: 'HOT',     color: '#ff9500', bg: 'rgba(255,149,0,0.12)',  border: 'rgba(255,149,0,0.3)' },
+  { min: 40, label: 'WARM',    color: '#ffca28', bg: 'rgba(255,202,40,0.1)',  border: 'rgba(255,202,40,0.25)' },
+  { min: 20, label: 'COOL',    color: '#40c4ff', bg: 'rgba(64,196,255,0.1)', border: 'rgba(64,196,255,0.25)' },
+  { min: 0,  label: 'DEAD',    color: '#555',    bg: 'rgba(255,255,255,0.04)',border: 'var(--border)' },
+] as const;
+
+export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], chain = 'bsc', marketHeat = null }: Props) {
   const [time, setTime] = useState('');
   useEffect(() => {
     const u = () => setTime(new Date().toUTCString().slice(17, 25));
@@ -38,7 +47,7 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
       {/* Main row */}
       <div className="flex items-center gap-4 px-5 py-3">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 flex-shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className="relative w-8 h-8 rounded-lg flex items-center justify-center"
             style={{ background: 'linear-gradient(135deg, #00e676 0%, #40c4ff 100%)', boxShadow: '0 0 16px rgba(0,230,118,0.35)' }}>
             <span className="font-bold text-sm text-black" style={{ fontFamily: 'monospace' }}>M</span>
@@ -49,7 +58,7 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
               <span className="font-bold text-base tracking-tight">
                 Meme<span className="text-glow-green" style={{ color: 'var(--green)' }}>Radar</span>
               </span>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-live" style={{ background: 'var(--green)' }} />
+              <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-live" style={{ background: 'var(--green)' }} />
             </div>
             <div className="font-mono text-xs -mt-0.5 hidden sm:block" style={{ color: 'var(--text-muted)' }}>
               Bloomberg Terminal for Four.meme
@@ -94,12 +103,22 @@ export default function TopBar({ stats, search, onSearch, onHelp, tokens = [], c
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          {marketHeat != null && (() => {
+            const cfg = HEAT_CONFIG.find(c => marketHeat >= c.min) ?? HEAT_CONFIG[HEAT_CONFIG.length - 1];
+            return (
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold"
+                style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-live" style={{ background: cfg.color }} />
+                {cfg.label} · {marketHeat}
+              </div>
+            );
+          })()}
           <span className="font-mono text-xs hidden md:block" style={{ color: 'var(--text-muted)' }}>UTC {time}</span>
           <button className="btn btn-ghost text-xs flex items-center gap-1.5" onClick={onHelp}>
             <HelpCircle size={13} /> <span className="hidden sm:inline">How it works</span>
           </button>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shrink-0"
             style={{ background: `${chainMeta.color}15`, border: `1px solid ${chainMeta.color}35`, color: chainMeta.color }}>
             <span className="w-1.5 h-1.5 rounded-full animate-live" style={{ background: chainMeta.color }} />
             {chainMeta.label}

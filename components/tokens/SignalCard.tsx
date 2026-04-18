@@ -2,7 +2,8 @@
 
 import { Token } from '@/lib/types';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
-import { Flame, Zap, Thermometer, Snowflake, Bell, Sparkles, Clock, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { Flame, Zap, Thermometer, Snowflake, Bell, Sparkles, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import CountdownTimer from '@/components/ui/CountdownTimer';
 import Tooltip from '@/components/ui/Tooltip';
 import TokenAvatar from '@/components/ui/TokenAvatar';
 
@@ -33,11 +34,6 @@ function fmt(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-function fmtGradTime(mins: number): string {
-  if (mins < 60) return `~${mins}m`;
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
-}
 
 export default function SignalCard({ token, selected, onClick, onAlert }: Props) {
   const up = token.signalDelta >= 0;
@@ -63,7 +59,7 @@ export default function SignalCard({ token, selected, onClick, onAlert }: Props)
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <div className="relative flex-shrink-0">
+            <div className="relative shrink-0">
               <TokenAvatar color={token.color} imageUrl={token.imageUrl} name={token.name} ticker={token.ticker} size={36} />
               {token.tier === 'FIRE' && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-live"
@@ -85,7 +81,7 @@ export default function SignalCard({ token, selected, onClick, onAlert }: Props)
               )}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-1">
+          <div className="flex flex-col items-end gap-1 shrink-0 ml-1">
             {(() => { const Icon = TIER_ICON[token.tier]; return (
               <span className={`px-2 py-0.5 rounded-md text-xs font-semibold flex items-center gap-1 ${TIER_CLASS[token.tier]}`}>
                 <Icon size={10} strokeWidth={2.5} />
@@ -101,8 +97,9 @@ export default function SignalCard({ token, selected, onClick, onAlert }: Props)
             {!token.listedOnDex && token.bondingCurveProgress >= 80 && (
               <span className="text-xs px-1.5 py-px rounded font-bold animate-pop-in flex items-center gap-1"
                 style={{ background: 'rgba(0,230,118,0.12)', color: 'var(--green)', border: '1px solid rgba(0,230,118,0.3)' }}>
-                <Clock size={9} strokeWidth={2.5} />
-                {token.timeToGradMinutes ? fmtGradTime(token.timeToGradMinutes) : 'GRAD'}
+                {token.timeToGradMinutes
+                  ? <CountdownTimer key={`${token.id}-grad`} minutes={token.timeToGradMinutes} />
+                  : 'GRAD'}
               </span>
             )}
           </div>
